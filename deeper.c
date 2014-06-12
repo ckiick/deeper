@@ -383,16 +383,6 @@ initstuff()
 	return 0;
 }
 
-/* do this later... */
-#ifdef DEBUG
-/* here we indulge in some paranoia. */
-void
-verify()
-{
-}
-#endif /* DEBUG */
-
-
 /* used in call to qsort() */
 int
 lcmp(const void *l1, const void *l2)
@@ -436,9 +426,16 @@ cmplgl(letter_t l, letter_t g)
  * Initial call: strndx=0 and curid=-1.
  * ? should we inline this?  It's kinda big...
  */
+
+/* we have a hole. either advance i or curid, NOT BOTH. */
+/* need to re-work */
+/* Oh for crissakes, just WRITE it, don't try to be clever! */
 int
 mi(letter_t *s, int nodeid, int *i, int *curid)
 {
+	int tst;
+	int newi = 0;
+	int newid = 0;
 DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
 	printlstr(s);
 	if (*curid >= 0)
@@ -446,7 +443,137 @@ DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
 	else
 		printf(" curid = -1\n");
 }
-	for (; s[*i] != '\0'; (*i)++) {
+	if (s[*i] == '\0') return 0;
+	if (*curid  < 0) newi = 1;
+	while (1) {
+		while ((s[*i] == MARK) || (s[*i] == s[(*i)+1])) {
+			*i += 1;
+			newi = 2;
+printf("skipped a mark and/or dup : %d/%d\n", *i, *curid);
+		}
+		if (s[*i] == '\0') return 0;
+		if (is_ublank(s[*i])) {
+			*curid = -1;
+			newid = 1;
+printf("reset cid on UBLANK: %d/%d\n", *i, *curid);
+		}
+		if (*curid < 0) {
+			*curid = nodeid;
+			newid += 2;
+printf("curid -1, move to nodeid: %d/%d\n", *i, *curid);
+		} else {
+			if (newi==0) {	/* OLD i */
+				if (gs(gaddag[*curid])) {
+					/* no sib, next i. */
+					*i += 1; newi = 4;
+				} else {
+					tst = cmplgl(s[*i], gl(gaddag[*curid]));
+					if (tst ==  0) {
+						/* match, adv id */
+						*curid += 1;
+						newid = 5;
+					} else if (tst > 0) {
+						/* l > nl, adv id. */
+						*curid += 1;
+						newid = 6;
+					} else {
+						/* l < nl, adv i */
+						*i += 1;
+						newi = 5;
+					}
+				}
+			} else {
+			}
+		}
+
+	}
+
+	while (s[*i] != '\0') {
+		while ((s[*i] == MARK) || (s[*i] == s[(*i)+1])) {
+			*i += 1;
+		}
+/* PART 1: either advance i or curid. but not both.(mostly) */
+			/* advance id, first call (or blank) */
+			tst = cmplgl(s[*i], gl(gaddag[*curid]));
+			if (gs(gaddag[*curid])) {
+				/* no more sibs, advance i */
+				*i += 1;
+			} else {
+				if (tst == 0) {
+					/* match, advance id */
+					*curid += 1;
+				} else if (tst < 0) {
+					/* l is bigger than nl, advance id */
+					*curid += 1;
+				} else {
+					/* l < nl, advance i */
+					*i += 1;
+				}
+			}
+		}
+/* PART 2: determine if we have a match. */
+		tst = cmplgl(s[*i], gl(gaddag[*curid]));
+		if (tst == 0) {
+			if (is_blank(s[*i])) {
+				s[*i] = blankgl(gl(gaddag[*curid]));
+			}
+			return 1;
+		}
+		if (is_pblank(s[*i])) s[*i] = UBLANK;
+	}
+}
+
+#ifdef GARBAGE
+		if ((*curid > 0) {
+			tst = cmplgl(l, gl(gaddag[*curid]));
+			if ((tst != 0) && (gs(gaddag[*curid]))) {
+				*i += 1; continue;
+			}
+		} else {
+			*curid = nodeid;
+			tst = cmplgl(l, gl(gaddag[*curid]));
+		}
+		if (tst == 0) {
+			if (is_blank(l)) {
+				s[*i] = blankgl(gl(gaddag[*curid]));
+			}
+			return 1;
+		}
+
+		if (*curid < 0) {
+			tst = 1;
+		} else {
+			tst = cmplgl(l, gl(gaddag[*curid]));
+		}
+		if (no match and no next node)
+			advance i
+
+		if ((*curid > 0) && (gs(gaddag[*curid])))
+			*i += 1;  continue;
+		}
+
+
+		if (
+			(*curid > 0) &&
+				(gs(gaddag[*curid])) ||
+				l < nl  ) {
+			*i += 1;
+			l = s[*i];
+		} else {
+			if (*curid < 0) {
+				*curid = nodeid;
+			} else {
+				*curid = *curid + 1;
+			}
+		}
+		tst = cmplgl(l,nl);
+		if (tst == 0) {
+			return 1;
+		}
+
+	}
+
+	for (; s[*i] != '\0'; (*i)++)
 		int tst = 1;
 		letter_t l = s[*i];
 		int bl = is_pblank(l) || is_ublank(l);
@@ -479,12 +606,13 @@ DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
 			}
 			if (is_pblank(l)) s[*i] = UBLANK;
 			/* prune: skip if we are past the letter */
-/*			if (tst < 0) break;	/* to outer loop */
+			if (tst < 0) break;	/* to outer loop */
 		}
 
 	}
 	return 0;
 }
+#endif /* GARBAGE */
 
 /* anagram using match iterator. */
 doanagram_d(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
@@ -1279,6 +1407,127 @@ DBG(DBG_GEN1, "GoOn: (%d)Pop %c from back of word\n", pos, l2c(L));
 	}
 	return movecnt;
 }
+
+/* do this later... */
+#ifdef DEBUG
+/* here we indulge in some paranoia. */
+void
+verify()
+{
+	/* some test cases for mi. */
+	{
+		char w[16] = ""; int nid = 0; int cid = -1; int i = 0;
+		int rv;
+
+		/* simple match. */
+		c2lstr("A", w, 0); nid=0;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('A')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* skip dup letters. */
+		c2lstr("XXXXX", w, 0); nid=0;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+printf("rv=%d, i=%d, cid=%d\n", rv, i, cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('X')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* skip mark */
+		c2lstr("/B", w, 0); nid=0;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('B')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* skip multiple marks */
+		c2lstr("///B///", w, 0); nid=0;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('B')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* match ^ */
+		c2lstr("^", w, 0); nid=26;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('^')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* match ^ at end */	
+		c2lstr("J^", w, 0); nid=26;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('J')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('^')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* singleton letter in node set */
+		c2lstr("K", w, 0); nid=121;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('K')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* singleton letter, no match */
+		c2lstr("JL", w, 0); nid=121;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* singleton, blank. */
+		c2lstr("JL?", w, 0); nid=121;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('k')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* singleton ^, match */
+		c2lstr("M^", w, 0); nid=52;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('^')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* singleton ^, no match */
+		c2lstr("Z", w, 0); nid=52;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* singleton ^, no match with blank */
+		c2lstr("A?", w, 0); nid=52;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* singleton ^, match with blank */
+		c2lstr("A?^", w, 0); nid=52;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('^')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* match two. */
+		c2lstr("AB", w, 0); nid=0;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('A')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('B')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+
+		/* match two with gap */
+		c2lstr("CH", w, 0); nid=53;cid=-1;i=0;
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('C')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT( (rv != 0) && (w[i] == c2l('H')));
+		rv = mi(w, nid, &i, &cid);
+		ASSERT(rv == 0);
+	}
+
+}
+#endif /* DEBUG */
 
 
 #define ACT_LOOKUP	0x001
