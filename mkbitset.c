@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <sys/stat.h>
 
 typedef unsigned int gn_t;
 typedef unsigned int bs_t;

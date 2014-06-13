@@ -24,6 +24,7 @@ typedef uint64_t hrtime_t;
  * since -g doesn't define anything for us, we have to use DEBUG and
  * reverse the sense.
  * I like my DBG macro trick. Note: dflags is a global, set by main.
+ * Can't quite do it with assert... so far.
  */
 #ifdef DEBUG
 #define	ASSERT(x)	assert(x)
@@ -47,8 +48,9 @@ typedef uint64_t hrtime_t;
 #define DBG_MLS		0x00000100	// letter move score stuff
 #define DBG_ARGS	0x00000200	// parsing and stuff
 #define DBG_RACK	0x00000400	// rack parsing and handling
-#define DBG_GEN1	0x00000800	// first cut at movegen
-#define DBG_MATCH	0x00001000	// match (iterator)
+#define DBG_GOON	0x00000800	// first cut at movegen
+#define DBG_GEN		0x00001000	// other half of movegen
+#define DBG_MATCH	0x00002000	// match (iterator)
 #define DBG_DBG		0x40000000	// debugger: debug thyself.
 #define DBG_ALL		0x7FFFFFFF	// extremely noisy
 #define DBG_NONE	0x80000000	// doesn't match anything
