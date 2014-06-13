@@ -1159,9 +1159,69 @@ rne(rack_t *r)
 	return 0;
 }
 
+#ifndef GEN
+#define	GEN	Gen2
+#endif
+
 /* forward dec */
 static int
 GoOn(board_t *, int, int, int, letter_t, letter_t *, rack_t *,  int);
+
+/* try the "traditional" algorithm first and see what it does */
+/* Gen(pos,word,rack,arc) - also need board and x,y position */
+/* fix Gen to use mi. */
+int
+Gen2(board_t *b, int ar, int ac, int pos, letter_t *w, rack_t *r,  int nodeid)
+{
+	int movecnt = 0;
+	letter_t L;
+	int lid;
+	int i;
+	letter_t rl = -1;
+	letter_t bl;
+
+DBG(DBG_GEN1, "in Gen at %d,%d(%-d) with %d in word and %d in rack in node %d",  ar,ac,pos, strlen(w), strlen(r->tiles), nodeid) {
+	printf(" - word=\"");
+	printlstr(w);
+	printf("\", rack=\"");
+	printlstr(r->tiles);
+	printf("\"\n");
+}
+	L = b->spaces[ar][ac+pos].f.letter;
+	if (L) {
+DBG(DBG_GEN1, "Gen: found %c on board at %d, %d\n", l2c(L), ar, ac);
+		lid  = findin(deblank(L), nodeid);
+		if (lid != -1) {
+DBG(DBG_GEN1, "Gen: calling GoOn ( %d, %d, %d, %c, word, rack, lid=%d\n", ar, ac, pos, l2c(L), lid);
+			movecnt += GoOn(b, ar, ac, pos, L, w, r, lid);
+		}
+	} else if (rne(r)) {
+		int curid = -1;
+		i = 0;
+		while (mi(r->tiles, nodeid, &i, &curid)) {
+			rl = r->tiles[i];
+			r->tiles[i] = MARK;
+DBG(DBG_GEN1, "Gen: calling GoOn ( %d, %d, %d, %c, word, rack, curid=%d\n", ar, ac, pos, l2c(rl), curid);
+			movecnt += GoOn(b, ar, ac, pos, rl, w, r, curid);
+			r->tiles[i] = rl;
+DBG(DBG_GEN1, "Gen: (%d)Push %c back on rack\n", pos, l2c(rl));
+		}
+#ifdef NOTNEEDED
+		if (is_ublank(rl)) {
+			r->tiles[i] = MARK;
+			do {
+				bl = blankgl(gl(gaddag[nodeid]));
+DBG(DBG_GEN1, "Gen: using %c for blank on board at %d, %d\n", l2c(bl), ar, ac);
+DBG(DBG_GEN1, "Gen: calling GoOn ( %d, %d, %d, %c, word, rack, lid=%d\n", ar, ac, pos, l2c(bl), lid);
+				movecnt += GoOn(b, ar, ac, pos, bl, w, r, nodeid);
+			} while (!gs(gaddag[nodeid++]));
+			r->tiles[i] = rl;
+		}
+#endif
+	}
+	return movecnt;
+}
+
 
 /* try the "traditional" algorithm first and see what it does */
 /* Gen(pos,word,rack,arc) - also need board and x,y position */
@@ -1245,14 +1305,14 @@ DBG(DBG_GEN1, "GoOn: (%d)Push %c to front of word\n", pos, l2c(L));
 		cid = gc(gaddag[nodeid]);
 		if (ac > 0) {
 DBG(DBG_GEN1, "GoOn: calling Gen ( %d, %d, %d, word, rack, cid=%d\n", ar, ac, pos -1, cid);
-			movecnt += Gen(b, ar, ac, pos - 1, w, r, cid);
+			movecnt += GEN(b, ar, ac, pos - 1, w, r, cid);
 		}
 		sepid = findin(SEP, cid);
 DBG(DBG_GEN1, "GoOn: sep at %d from %d\n", sepid, cid);
 		if ((sepid != -1) && nldl(b, ar, ac+pos) && (ac < 14)) {
 			cid = gc(gaddag[sepid]);
 DBG(DBG_GEN1, "GoOn: calling Gen ( %d, %d, 1, word, rack, id=%d\n", ar, ac, cid);
-			movecnt += Gen(b, ar, ac, 1, w, r, cid);
+			movecnt += GEN(b, ar, ac, 1, w, r, cid);
 		}
 		prechopl(w);
 DBG(DBG_GEN1, "GoOn: (%d)Pop %c from front of word\n", pos, l2c(L));
@@ -1266,7 +1326,7 @@ DBG(DBG_GEN1, "GoOn: (%d)Push %c to back of word\n", pos, l2c(L));
 		cid = gc(gaddag[nodeid]);
 		if (ac < 14) {
 DBG(DBG_GEN1, "GoOn: calling Gen ( %d, %d, %d, word, rack, cid=%d\n", ar, ac, pos+1, cid);
-			movecnt += Gen(b, ar, ac, pos + 1, w, r, cid);
+			movecnt += GEN(b, ar, ac, pos + 1, w, r, cid);
 		}
 DBG(DBG_GEN1, "GoOn: (%d)Pop %c from back of word\n", pos, l2c(L));
 		apchopl(w);
@@ -1530,7 +1590,7 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			argmove.tiles[0] = '\0';
 			qsort(r.tiles, strlen(r.tiles), 1, lcmp);
 			vprintf(VNORM, "Possible moves for %s:\n", argv[optind]);
-			moves = Gen(&sb, argmove.row, argmove.col, 0, argmove.tiles, &r, 0);
+			moves = GEN(&sb, argmove.row, argmove.col, 0, argmove.tiles, &r, 0);
 			vprintf(VNORM, "created %d starting moves from %s\n", moves, argv[optind]);
 		}
 		if (!errs && action&ACT_ANAGRAM) {
