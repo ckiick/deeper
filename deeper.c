@@ -120,6 +120,7 @@ c2lstr(char *cstr, char *lstr, int played)
 			if (!is_bvalid(lstr[i])) inv++;
 		i++;
 	}
+	lstr[i] = '\0';
 	return inv;
 }
 
@@ -414,7 +415,6 @@ cmplgl(letter_t l, letter_t g)
 	return (l - g);
 }
 
-
 /*
  * match iterator: non-recursive iteration function for letters against
  * gaddag edges.  Re-entrant and state savable.
@@ -425,17 +425,12 @@ cmplgl(letter_t l, letter_t g)
  * OUT: continue or end of matches value (0=no more matches, 1=continue)
  * Initial call: strndx=0 and curid=-1.
  * ? should we inline this?  It's kinda big...
+ * Tweaked for that one corner case.
  */
-
-/* we have a hole. either advance i or curid, NOT BOTH. */
-/* need to re-work */
-/* Oh for crissakes, just WRITE it, don't try to be clever! */
 int
 mi(letter_t *s, int nodeid, int *i, int *curid)
 {
-	int tst;
-	int newi = 0;
-	int newid = 0;
+	int reenter = 1;
 DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
 	printlstr(s);
 	if (*curid >= 0)
@@ -443,155 +438,55 @@ DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
 	else
 		printf(" curid = -1\n");
 }
-	if (s[*i] == '\0') return 0;
-	if (*curid  < 0) newi = 1;
-	while (1) {
-		while ((s[*i] == MARK) || (s[*i] == s[(*i)+1])) {
-			*i += 1;
-			newi = 2;
-printf("skipped a mark and/or dup : %d/%d\n", *i, *curid);
-		}
-		if (s[*i] == '\0') return 0;
-		if (is_ublank(s[*i])) {
-			*curid = -1;
-			newid = 1;
-printf("reset cid on UBLANK: %d/%d\n", *i, *curid);
-		}
-		if (*curid < 0) {
-			*curid = nodeid;
-			newid += 2;
-printf("curid -1, move to nodeid: %d/%d\n", *i, *curid);
-		} else {
-			if (newi==0) {	/* OLD i */
-				if (gs(gaddag[*curid])) {
-					/* no sib, next i. */
-					*i += 1; newi = 4;
-				} else {
-					tst = cmplgl(s[*i], gl(gaddag[*curid]));
-					if (tst ==  0) {
-						/* match, adv id */
-						*curid += 1;
-						newid = 5;
-					} else if (tst > 0) {
-						/* l > nl, adv id. */
-						*curid += 1;
-						newid = 6;
-					} else {
-						/* l < nl, adv i */
-						*i += 1;
-						newi = 5;
-					}
-				}
-			} else {
-			}
-		}
 
+	if (*curid < 0) {
+		reenter = 0;
+		*curid = nodeid;
 	}
 
-	while (s[*i] != '\0') {
-		while ((s[*i] == MARK) || (s[*i] == s[(*i)+1])) {
-			*i += 1;
-		}
-/* PART 1: either advance i or curid. but not both.(mostly) */
-			/* advance id, first call (or blank) */
-			tst = cmplgl(s[*i], gl(gaddag[*curid]));
-			if (gs(gaddag[*curid])) {
-				/* no more sibs, advance i */
-				*i += 1;
-			} else {
-				if (tst == 0) {
-					/* match, advance id */
-					*curid += 1;
-				} else if (tst < 0) {
-					/* l is bigger than nl, advance id */
-					*curid += 1;
-				} else {
-					/* l < nl, advance i */
-					*i += 1;
-				}
-			}
-		}
-/* PART 2: determine if we have a match. */
-		tst = cmplgl(s[*i], gl(gaddag[*curid]));
-		if (tst == 0) {
-			if (is_blank(s[*i])) {
-				s[*i] = blankgl(gl(gaddag[*curid]));
-			}
-			return 1;
-		}
-		if (is_pblank(s[*i])) s[*i] = UBLANK;
-	}
-}
-
-#ifdef GARBAGE
-		if ((*curid > 0) {
-			tst = cmplgl(l, gl(gaddag[*curid]));
-			if ((tst != 0) && (gs(gaddag[*curid]))) {
-				*i += 1; continue;
-			}
-		} else {
-			*curid = nodeid;
-			tst = cmplgl(l, gl(gaddag[*curid]));
-		}
-		if (tst == 0) {
-			if (is_blank(l)) {
-				s[*i] = blankgl(gl(gaddag[*curid]));
-			}
-			return 1;
-		}
-
-		if (*curid < 0) {
-			tst = 1;
-		} else {
-			tst = cmplgl(l, gl(gaddag[*curid]));
-		}
-		if (no match and no next node)
-			advance i
-
-		if ((*curid > 0) && (gs(gaddag[*curid])))
-			*i += 1;  continue;
-		}
-
-
-		if (
-			(*curid > 0) &&
-				(gs(gaddag[*curid])) ||
-				l < nl  ) {
-			*i += 1;
-			l = s[*i];
-		} else {
-			if (*curid < 0) {
-				*curid = nodeid;
-			} else {
-				*curid = *curid + 1;
-			}
-		}
-		tst = cmplgl(l,nl);
-		if (tst == 0) {
-			return 1;
-		}
-
-	}
-
-	for (; s[*i] != '\0'; (*i)++)
-		int tst = 1;
+	for (; s[*i] != '\0'; (*i)++) {
 		letter_t l = s[*i];
-		int bl = is_pblank(l) || is_ublank(l);
+		letter_t nl;
+		gn_t curnode;
+		int tst;
+		int bl;
 		if ((l == MARK) || (l == s[(*i)+1])) continue;
-		if (is_ublank(l)) *curid = -1;	/* start over */
-		if (*curid >= 0) {
-			tst = cmplgl(l, gl(gaddag[*curid]));
-		}
+bl = is_pblank(l) || is_ublank(l);
+if (is_ublank(l)) *curid = nodeid;	/* start over */
 
-		while (tst >= 0) {
-/*		while ((*curid < 0) ||
+		do {
+			curnode = gaddag[*curid];
+			nl = gl(curnode);
+			tst=cmplgl(l,nl);
+DBG(DBG_MATCH, "inner loop, i=%d, cid=%d, reenter=%d tst=%d\n", *i, *curid, reenter, tst);
+			if (tst == 0) {
+				if (bl) {
+					s[*i] = blankgl(nl);
+				}
+if (!reenter) {
+				return 1;
+} else {
+	reenter = 0;
+}
+				s[*i] = l;
+			}
+			if ((tst >= 0) && !gs(curnode)) {
+				(*curid)++;
+			} else {
+				break;
+			}
+		} while (tst >= 0);
+
+	}
+	return 0;
+}
+#ifdef OLDSTUFF
+		while ((*curid < 0) ||
 		    (!gs(gaddag[*curid]) && (l >= gl(gaddag[*curid])))) {
-*/
+DBG(DBG_MATCH, "inner loop, i=%d, cid=%d (oldi=%d)\n", *i, *curid, oldi);
 			gn_t curnode;
 			letter_t nl;
-/* this seems to be causing problems.
-			*curid = ((*curid < 0) ? nodeid : (*curid)++);
-*/
+			int tst;
 			if (*curid < 0) {
 				*curid = nodeid;
 			} else {
@@ -611,9 +506,7 @@ printf("curid -1, move to nodeid: %d/%d\n", *i, *curid);
 
 	}
 	return 0;
-}
-#endif /* GARBAGE */
-
+#endif
 /* anagram using match iterator. */
 doanagram_d(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
 {
@@ -1429,20 +1322,19 @@ verify()
 		/* skip dup letters. */
 		c2lstr("XXXXX", w, 0); nid=0;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
-printf("rv=%d, i=%d, cid=%d\n", rv, i, cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('X')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* skip mark */
-		c2lstr("/B", w, 0); nid=0;cid=-1;i=0;
+		c2lstr("\\B", w, 0); nid=0;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('B')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* skip multiple marks */
-		c2lstr("///B///", w, 0); nid=0;cid=-1;i=0;
+		c2lstr("\\\\\\B\\\\\\", w, 0); nid=0;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('B')));
 		rv = mi(w, nid, &i, &cid);
@@ -1486,6 +1378,8 @@ printf("rv=%d, i=%d, cid=%d\n", rv, i, cid);
 		/* singleton ^, match */
 		c2lstr("M^", w, 0); nid=52;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
+printlstr(w); printf(" %c %d \n", l2c(w[0]), w[0]);  
+printf("rv=%d, i=%d, cid=%d\n", rv, i, cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('^')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
