@@ -2,6 +2,14 @@
 
 # todo: customize for linux vs solaris. eg: -lrt.
 
+all:	dict gdexp deeper
+
+clean:
+	rm -rf deeper gdexp mkbitset
+
+clobber:	clean
+	rm -rf ENABLE.* input
+
 deeper:	deeper.c deeper.h
 	gcc -o deeper deeper.c -lrt
 
@@ -25,7 +33,8 @@ ENABLE.gaddag:	makegaddag.py ENABLE.SEP.TXT
 	./makegaddag.py ENABLE.SEP.TXT ENABLE.gaddag
 
 ENABLE.bitset:	mkbitset ENABLE.gaddag
-	mkbitset
+	./mkbitset
 
 mkbitset:	mkbitset.c
 	gcc -o mkbitset mkbitset.c
+
