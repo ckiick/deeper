@@ -425,7 +425,7 @@ cmplgl(letter_t l, letter_t g)
  * OUT: continue or end of matches value (0=no more matches, 1=continue)
  * Initial call: strndx=0 and curid=-1.
  * ? should we inline this?  It's kinda big...
- * Tweaked for that one corner case.
+ * Tweaked for that one corner case.  Or two.
  */
 int
 mi(letter_t *s, int nodeid, int *i, int *curid)
@@ -451,8 +451,8 @@ DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
 		int tst;
 		int bl;
 		if ((l == MARK) || (l == s[(*i)+1])) continue;
-bl = is_pblank(l) || is_ublank(l);
-if (is_ublank(l)) *curid = nodeid;	/* start over */
+		bl = is_pblank(l) || is_ublank(l);
+		if (is_ublank(l)) *curid = nodeid;	/* start over */
 
 		do {
 			curnode = gaddag[*curid];
@@ -463,12 +463,11 @@ DBG(DBG_MATCH, "inner loop, i=%d, cid=%d, reenter=%d tst=%d\n", *i, *curid, reen
 				if (bl) {
 					s[*i] = blankgl(nl);
 				}
-if (!reenter) {
-				return 1;
-} else {
-	reenter = 0;
-}
-				s[*i] = l;
+				if (!reenter) {
+					return 1;
+				} else {
+					reenter = 0;
+				}
 			}
 			if ((tst >= 0) && !gs(curnode)) {
 				(*curid)++;
@@ -476,37 +475,11 @@ if (!reenter) {
 				break;
 			}
 		} while (tst >= 0);
-
+		if (bl) s[*i] = UBLANK;
 	}
 	return 0;
 }
-#ifdef OLDSTUFF
-		while ((*curid < 0) ||
-		    (!gs(gaddag[*curid]) && (l >= gl(gaddag[*curid])))) {
-DBG(DBG_MATCH, "inner loop, i=%d, cid=%d (oldi=%d)\n", *i, *curid, oldi);
-			gn_t curnode;
-			letter_t nl;
-			int tst;
-			if (*curid < 0) {
-				*curid = nodeid;
-			} else {
-				*curid = *curid + 1;
-			}
-			curnode = gaddag[*curid];
-			nl = gl(curnode);
-			tst = cmplgl(l,nl);
-			if (tst == 0) {
-				if (bl) s[*i] = blankgl(nl);
-				return 1;
-			}
-			if (is_pblank(l)) s[*i] = UBLANK;
-			/* prune: skip if we are past the letter */
-			if (tst < 0) break;	/* to outer loop */
-		}
 
-	}
-	return 0;
-#endif
 /* anagram using match iterator. */
 doanagram_d(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
 {
@@ -1378,8 +1351,9 @@ verify()
 		/* singleton ^, match */
 		c2lstr("M^", w, 0); nid=52;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
+VERB(VNOISY, "verify mi: rv=%d, i=%d, cid=%d  ", rv, i, cid) {
 printlstr(w); printf(" %c %d \n", l2c(w[0]), w[0]);  
-printf("rv=%d, i=%d, cid=%d\n", rv, i, cid);
+}
 		ASSERT( (rv != 0) && (w[i] == c2l('^')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
