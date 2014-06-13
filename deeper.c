@@ -797,7 +797,7 @@ DBG(DBG_MLS, "%cmls set to %d at (%d,%d)\n", dc? 'h':'v', val, r, c);
  * playthrough is for moves that include tiles already on board.
  */
 int
-score(move_t m, board_t *b, int doit, int playthrough)
+score(move_t *m, board_t *b, int doit, int playthrough)
 {
 	int ssf = 0, xssf = 0;	// [vertical] score so far
 	int ends = 0;		// connected at ends.
@@ -813,54 +813,54 @@ score(move_t m, board_t *b, int doit, int playthrough)
 	int total;
 	space_t *sp;
 
-DBG(DBG_SCORE,"in score with (%d,%d)->%s %d letters\n", m.row, m.col,  m.dir == M_HORIZ ? "horiz" : "vert", m.lcount);
+DBG(DBG_SCORE,"in score with (%d,%d)->%s %d letters\n", m->row, m->col,  m->dir == M_HORIZ ? "horiz" : "vert", m->lcount);
 
-	if (m.dir == M_HORIZ) {
-		ends = b->spaces[m.row][m.col].f.vmls;
-DBG(DBG_SCORE, "get H beginning end score %d at (%d, %d)\n", ends, m.row, m.col);
+	if (m->dir == M_HORIZ) {
+		ends = b->spaces[m->row][m->col].f.vmls;
+DBG(DBG_SCORE, "get H beginning end score %d at (%d, %d)\n", ends, m->row, m->col);
 		deltav = 1;
 		ortho = M_VERT;
 	} else {
-		ends = b->spaces[m.row][m.col].f.hmls;
-DBG(DBG_SCORE, "get V beginning end score %d at (%d, %d)\n", ends, m.row, m.col);
+		ends = b->spaces[m->row][m->col].f.hmls;
+DBG(DBG_SCORE, "get V beginning end score %d at (%d, %d)\n", ends, m->row, m->col);
 		deltah = 1;
 		ortho = M_HORIZ;
 	};
-DBG(DBG_SCORE, "moving %d so deltah=%d and deltav=%d\n", m.dir, deltah, deltav);
+DBG(DBG_SCORE, "moving %d so deltah=%d and deltav=%d\n", m->dir, deltah, deltav);
 
-	if (m.lcount >= RACKSIZE) bingo = BINGOBONUS;
+	if (m->lcount >= RACKSIZE) bingo = BINGOBONUS;
 
-	for (i=0, r=m.row, c=m.col; i < m.lcount; r += deltah, c += deltav) {
+	for (i=0, r=m->row, c=m->col; i < m->lcount; r += deltah, c += deltav) {
 		sp = &(b->spaces[r][c]);
 		if (sp->f.letter == EMPTY) {
-DBG(DBG_SCORE, "placing %dth out of %d %c(%d) at (%d,%d)\n", i, m.lcount, l2c(m.tiles[i]), m.tiles[i], r, c);
+DBG(DBG_SCORE, "placing %dth out of %d %c(%d) at (%d,%d)\n", i, m->lcount, l2c(m->tiles[i]), m->tiles[i], r, c);
 DBG(DBG_SCORE, "on space (%d,%d) lm=%d wm=%d\n",r,c, sp->f.lm, sp->f.wm);
 			mult *= sp->f.wm;	// word multiplier
-			ts = lval(m.tiles[i]);	// ts = tile score
+			ts = lval(m->tiles[i]);	// ts = tile score
 			tts += ts;		// total ts
 			tbs = ts * sp->f.lm;	// tile bonus score
 			ssf += ts;		// add current tile
-			if ((m.dir == M_HORIZ) && sp->f.hmls) {
+			if ((m->dir == M_HORIZ) && sp->f.hmls) {
 DBG(DBG_SCORE, "horiz move (%d + %d) * %d \n", sp->f.hmls, tbs, sp->f.wm);
 				xssf += (sp->f.hmls + tbs) * sp->f.wm;
 			}
-			if ((m.dir == M_VERT) && sp->f.vmls) {
+			if ((m->dir == M_VERT) && sp->f.vmls) {
 DBG(DBG_SCORE, "vert move (%d + %d) * %d \n", sp->f.vmls, tbs, sp->f.wm);
 				xssf += (sp->f.vmls + tbs) * sp->f.wm;
 			}
-DBG(DBG_SCORE, "tile %c scores: ts=%d, tbs=%d, ssf=%d, xssf=%d\n", l2c(m.tiles[i]), ts, tbs, ssf, xssf);
+DBG(DBG_SCORE, "tile %c scores: ts=%d, tbs=%d, ssf=%d, xssf=%d\n", l2c(m->tiles[i]), ts, tbs, ssf, xssf);
 			if (doit) {
-				sp->f.letter = m.tiles[i];
+				sp->f.letter = m->tiles[i];
 				/* update mls stuff. Not easy. */
-				updatemls(b, m.dir, r, c, ts);
+				updatemls(b, m->dir, r, c, ts);
 //				sp->f.hmls = 0;
 //				sp->f.vmls = 0;
 			}
 			i++;	 // next letter please
 		} else {
 			if (playthrough) {
-				if (m.tiles[i] != sp->f.letter) {
-vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m.tiles[i]), m.tiles[i], l2c(sp->f.letter), sp->f.letter);
+				if (m->tiles[i] != sp->f.letter) {
+vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->f.letter), sp->f.letter);
 				}
 				i++;	// I'm not sure about this....
 			}
@@ -869,7 +869,7 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			ssf += ts;		// add current tile
 		}
 	}
-	if (m.dir == M_HORIZ) {
+	if (m->dir == M_HORIZ) {
 		ends += b->spaces[r][c-1].f.vmls;
 DBG(DBG_SCORE, "get H ending end score %d at (%d, %d)\n", ends, r, c);
 		deltav = 1;
@@ -881,7 +881,7 @@ DBG(DBG_SCORE, "get V ending end score %d at (%d, %d)\n", ends, r, c);
 		ortho = M_HORIZ;
 	};
 	if (doit)
-		updatemls(b, ortho, m.row, m.col, tts + ends);	// on ends
+		updatemls(b, ortho, m->row, m->col, tts + ends);	// on ends
 	total = bingo + (ssf * mult) + xssf + ends;
 DBG(DBG_SCORE, "total score is bingo=%d + sum=%d * mult=%d + xc=%d + ends=%d = %d\n", bingo, ssf, mult, xssf, ends, total);
 	return total;
@@ -1060,6 +1060,22 @@ DBG(DBG_ARGS, "plen=%d, len=%d, word=%s\n", plen, len, cp);
 	return 0;
 }
 
+
+void
+printmove(move_t *m)
+{
+	if (m->dir == M_HORIZ) {
+		printf("%d%c:", m->row, coltags[(m->col)-1]);
+	} else {
+		printf("%c%d:", coltags[(m->col)-1], m->row);
+	}
+	printlstr(m->tiles);
+	if (m->score > 0) {
+		printf(" scores %d", m->score);
+	}
+	printf("\n");
+}
+
 /* see if l is a sib of nodeid, and if so return which one. -1 if not found*/
 int
 findin(letter_t l, int nodeid)
@@ -1094,7 +1110,7 @@ recordplay(board_t *b, int ar, int ac, int dir, letter_t *w)
 			m.dir = dir;
 			m.lcount = strlen(w);
 			strcpy(m.tiles, w);
-			s = score(m, b, 0, 1);
+			s = score(&m, b, 0, 1);
 			printf(" scores %d", s);
 		}
 		printf("\n");
@@ -1160,13 +1176,62 @@ rne(rack_t *r)
 }
 
 #ifndef GEN
-#define	GEN	Gen2
+#define	GEN	Gen3
 #endif
 
 /* forward dec */
+//GoOn(board_t *, int, int, int, letter_t, letter_t *, rack_t *,  int);
 static int
-GoOn(board_t *, int, int, int, letter_t, letter_t *, rack_t *,  int);
+GoOn(board_t *, move_t *, int, letter_t, rack_t *,  int);
 
+/* try the "traditional" algorithm first and see what it does */
+/* Gen(pos,word,rack,arc) - also need board and x,y position */
+/* fix Gen to use mi. Use move_t instead of separate items.*/
+int
+Gen3(board_t *b, move_t *m, int pos, rack_t *r, int nodeid)
+{
+	int movecnt = 0;
+	letter_t L;
+	int lid;
+	int i;
+	letter_t rl = -1;
+	int ac = m->col;
+	int ar = m->row;
+	letter_t *w = m->tiles;
+
+DBG(DBG_GEN, "in Gen at %d,%d(%-d) with %d in word and %d in rack in node %d",  ar,ac,pos, strlen(w), strlen(r->tiles), nodeid) {
+	printf(" - word=\"");
+	printlstr(w);
+	printf("\", rack=\"");
+	printlstr(r->tiles);
+	printf("\"\n");
+}
+	L = b->spaces[ar][ac+pos].f.letter;
+	if (L) {
+DBG(DBG_GEN, "Gen: found %c on board at %d, %d\n", l2c(L), ar, ac);
+		lid  = findin(deblank(L), nodeid);
+		if (lid != -1) {
+DBG(DBG_GEN, "Gen: calling GoOn ( %d, %d, %d, %c, word, rack, lid=%d\n", ar, ac, pos, l2c(L), lid);
+			movecnt += GoOn(b, m, pos, L, r, lid);
+//			movecnt += GoOn(b, ar, ac, pos, L, w, r, lid);
+		}
+	} else if (rne(r)) {
+		int curid = -1;
+		i = 0;
+		while (mi(r->tiles, nodeid, &i, &curid)) {
+			rl = r->tiles[i];
+			r->tiles[i] = MARK;
+DBG(DBG_GEN, "Gen: calling GoOn ( %d, %d, %d, %c, word, rack, curid=%d\n", ar, ac, pos, l2c(rl), curid);
+			movecnt += GoOn(b, m, pos, rl, r, curid);
+//			movecnt += GoOn(b, ar, ac, pos, rl, w, r, curid);
+			r->tiles[i] = rl;
+DBG(DBG_GEN, "Gen: (%d)Push %c back on rack\n", pos, l2c(rl));
+		}
+	}
+	return movecnt;
+}
+
+#ifdef GENMOVE
 /* try the "traditional" algorithm first and see what it does */
 /* Gen(pos,word,rack,arc) - also need board and x,y position */
 /* fix Gen to use mi. */
@@ -1266,13 +1331,17 @@ DBG(DBG_GEN, "Gen: calling GoOn ( %d, %d, %d, %c, word, rack, lid=%d\n", ar, ac,
 	}
 	return movecnt;
 }
+#endif
 
 int
-GoOn(board_t *b, int ar, int ac, int pos, letter_t L, letter_t *w, rack_t *r,  int nodeid)
+GoOn(board_t *b, move_t *m, int pos, letter_t L, rack_t *r,  int nodeid)
 {
 	int movecnt = 0;
 	int cid;
 	int sepid;
+ 	letter_t *w = m->tiles;
+	int ac = m->col;
+	int ar = m->row;
 
 DBG(DBG_GOON, "in GoOn at %d,%d(%-d) got %c, len(word)=%d len(rack)=%d node=%d", ar,ac,pos, l2c(L), strlen(w), strlen(r->tiles), nodeid) {
 	printf(" - word=\"");
@@ -1286,20 +1355,30 @@ DBG(DBG_GOON, "in GoOn at %d,%d(%-d) got %c, len(word)=%d len(rack)=%d node=%d",
 DBG(DBG_GOON, "GoOn: (%d)Push %c to front of word\n", pos, l2c(L));
 		if ((gf(gaddag[nodeid])) && nldl(b, ar, ac+pos))
 		{
-			recordplay(b, ar, ac+pos, M_HORIZ, w);
+			m->col = ac + pos;
+			if (doscore) {
+				m->score = score(m, b, 0, 1);
+			}
+			VERB(VNORM, "") {
+				printmove(m);
+			}
+//			recordplay(b, ar, ac+pos, M_HORIZ, w);
 			movecnt++;
+			m->col = ac;
 		}
 		cid = gc(gaddag[nodeid]);
 		if (ac > 0) {
 DBG(DBG_GOON, "GoOn: calling Gen ( %d, %d, %d, word, rack, cid=%d\n", ar, ac, pos -1, cid);
-			movecnt += GEN(b, ar, ac, pos - 1, w, r, cid);
+			movecnt += GEN(b, m, pos - 1, r, cid);
+//			movecnt += GEN(b, ar, ac, pos - 1, w, r, cid);
 		}
 		sepid = findin(SEP, cid);
 DBG(DBG_GOON, "GoOn: sep at %d from %d\n", sepid, cid);
 		if ((sepid != -1) && nldl(b, ar, ac+pos) && (ac < 14)) {
 			cid = gc(gaddag[sepid]);
 DBG(DBG_GOON, "GoOn: calling Gen ( %d, %d, 1, word, rack, id=%d\n", ar, ac, cid);
-			movecnt += GEN(b, ar, ac, 1, w, r, cid);
+			movecnt += GEN(b, m, 1, r, cid);
+//			movecnt += GEN(b, ar, ac, 1, w, r, cid);
 		}
 		prechopl(w);
 DBG(DBG_GOON, "GoOn: (%d)Pop %c from front of word\n", pos, l2c(L));
@@ -1307,13 +1386,22 @@ DBG(DBG_GOON, "GoOn: (%d)Pop %c from front of word\n", pos, l2c(L));
 		appendl(w, L);
 DBG(DBG_GOON, "GoOn: (%d)Push %c to back of word\n", pos, l2c(L));
 		if ( (gf(gaddag[nodeid])) && nldr(b, ar, ac + pos)) {
-			recordplay(b, ar, ac + pos - strlen(w) + 1, M_HORIZ, w);
+			m->col = ac + pos - strlen(w) +1;
+			if (doscore) {
+				m->score = score(m, b, 0, 1);
+			}
+//			recordplay(b, ar, ac + pos - strlen(w) + 1, M_HORIZ, w);
+			VERB(VNORM, "") {
+				printmove(m);
+			}
 			movecnt++;
+			m->col = ac;
 		}
 		cid = gc(gaddag[nodeid]);
 		if (ac < 14) {
 DBG(DBG_GOON, "GoOn: calling Gen ( %d, %d, %d, word, rack, cid=%d\n", ar, ac, pos+1, cid);
-			movecnt += GEN(b, ar, ac, pos + 1, w, r, cid);
+			movecnt += GEN(b, m, pos+1, r, cid);
+//			movecnt += GEN(b, ar, ac, pos + 1, w, r, cid);
 		}
 DBG(DBG_GOON, "GoOn: (%d)Pop %c from back of word\n", pos, l2c(L));
 		apchopl(w);
@@ -1560,7 +1648,7 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			}
 		}
 		if (action & (ACT_SCORE|ACT_MOVE)) {
-			sc = score(argmove, &sb, action&ACT_MOVE, action&ACT_PLAYTHRU);
+			sc = score(&argmove, &sb, action&ACT_MOVE, action&ACT_PLAYTHRU);
 			vprintf(VNORM, "%s scores %d\n", argv[optind], sc);
 			if (action&ACT_MOVE) {
 				VERB(VNOISY, "results of move:\n") {
@@ -1577,7 +1665,8 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			argmove.tiles[0] = '\0';
 			qsort(r.tiles, strlen(r.tiles), 1, lcmp);
 			vprintf(VNORM, "Possible moves for %s:\n", argv[optind]);
-			moves = GEN(&sb, argmove.row, argmove.col, 0, argmove.tiles, &r, 0);
+			moves = GEN(&sb, &argmove, 0, &r, 0);
+//			moves = GEN(&sb, argmove.row, argmove.col, 0, argmove.tiles, &r, 0);
 			vprintf(VNORM, "created %d starting moves from %s\n", moves, argv[optind]);
 		}
 		if (!errs && action&ACT_ANAGRAM) {
