@@ -1085,14 +1085,20 @@ DBG(DBG_ARGS, "plen=%d, len=%d, word=%s\n", plen, len, cp);
 
 
 void
-printmove(move_t *m)
+printmove(move_t *m, int rev)
 {
 	if (m->dir == M_HORIZ) {
 		printf("%d%c:", m->row, coltags[(m->col)-1]);
 	} else {
 		printf("%c%d:", coltags[(m->col)-1], m->row);
 	}
-	printlstr(m->tiles);
+	if (rev == 0) {
+		printlrstr(m->tiles);
+	} else {
+		revnstr(m->tiles, rev);
+		printlstr(m->tiles);
+		revnstr(m->tiles, rev);
+	}
 	if (m->score > 0) {
 		printf(" scores %d", m->score);
 	}
@@ -1182,11 +1188,11 @@ GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid)
  	letter_t *w = m->tiles;
 	int ac = m->col;
 	int ar = m->row;
-	letter_t L = '\0';
 	int i = 0;
-	int delta = -1;
 	int ndx = 0;
-	int lms = ac;
+	int prelen;
+	int curcol = ac;
+	letter_t *lp;
 
 DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	printf(" - word=\"");
@@ -1195,61 +1201,55 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	printlstr(r->tiles);
 	printf("\"\n");
 }
-	if (pos > 0) delta = 1;
-
-	while (Gi(b, m, pos, r, nodeid, &i, &curid, &L)) {
-DBG(DBG_GOON, "Gen gave i=%d, id=%d, L=%c and rack ", i, curid, l2c(L)) {
+	ndx = strlen(w);	/* depth */
+	if (pos > 0) {
+		prelen = pos;
+		curcol += ndx;
+	} else {
+		prelen = ndx + 1;
+	}
+	lp = &(w[ndx]); w[ndx+1] = '\0';
+	while (Gi(b, m, pos, r, nodeid, &i, &curid, lp)) {
+DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(*lp)) {
 	printlstr(r->tiles); printf("\n");
 }
-		if (pos <= 0) {
-			prependl(L, w);
-		} else {
-			appendl(w, L);
-		}
-		if ((gf(gaddag[curid])) && nldh(b, ar, ac + delta, pos)) {
-			if (pos <= 0) 
-				m->col = ac + pos;
-			else
-				m->col = ac + pos - strlen(w) +1;
+		if ((gf(gaddag[curid])) && nldh(b, ar, curcol, pos)) {
 			if (doscore) {
 				m->score = score(m, b, 0, 1);
 			}
 			VERB(VNORM, "") {
-				printmove(m);
+				printmove(m, pos);
 			}
 			movecnt++;
-			m->col = ac;
 		}
 		cid = gc(gaddag[curid]);
-		if (((pos <= 0) && (ac > 0))  || ((pos > 0) && (ac < 14))) {
+		if (((pos <= 0) && (curcol > 0))  || ((pos > 0) && (curcol < 14))) {
 			/* recurse */
-DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d", ar, ac, pos+delta,cid) {
+DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, cid) {
 	printf(" word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
-			movecnt += GoOn2(b, m, pos +delta, r,  cid);
+			if (pos <= 0) m->col--;
+			movecnt += GoOn2(b, m, pos, r,  cid);
+			if (pos <= 0) m->col++;
 		}
 		/* have to handle the ^ */
 		if (pos <= 0) {
 			sepid = findin(SEP, cid);
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
-			if ((sepid != -1) && nldl(b, ar, ac+pos) && (ac < 14)) {
+			if ((sepid != -1) && nldl(b, ar, curcol) && (curcol < 14)) {
 				cid = gc(gaddag[sepid]);
-DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d\n", ar, ac, cid) {
+DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d\n", ar, m->col, cid) {
 	printf(" - word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
-				movecnt += GoOn2(b, m, 1, r, cid);
+				movecnt += GoOn2(b, m, prelen, r, cid);
 			}
 		}
-		if (pos <= 0) {
-			prechopl(w);
-		} else {
-			apchopl(w);
-		}
 	}
+	*lp = '\0';
 	return movecnt;
 }
 
