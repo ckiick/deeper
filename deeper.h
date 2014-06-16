@@ -82,9 +82,11 @@ char coltags[BOARDX+1] = "ABCDEFGHIJKLMNO";
 
 /* gaddag stuff */
 #define DFNEND  ".gaddag"	// dict file name ending
+#define BSNEND  ".bitset"	// bitset file name ending
 #define DDFN    "ENABLE"	// default dict file name
 
 typedef uint32_t gn_t;		// gaddag node
+typedef uint32_t bs_t;		// bitset
 
 #define UBLANK	27		// unplayed blank (Z+1) '['
 #define BB	0x20		// played Blank Bit
@@ -121,6 +123,19 @@ typedef uint32_t gn_t;		// gaddag node
 #define	gl2l(l)		(l)
 #define blankgl(gl)	(gl2l(gl)|BB)
 #define deblank(l)	((l) & ~BB)
+
+/* optimized bit twiddling. */
+#if !defined(__sun)
+#define setbit(w,b) 	asm("btsl %1,%0" : "=r" (w) : "r" (b))
+#else
+#define	setbit(w,b)		((0x01<<(b))&(w))
+#endif
+#define popc    __builtin_popcount
+/* ffs is in clib and already optimized. mostly. */
+
+/* letter to bit. l must be A-Z^?. Cannot be played blank.*/
+#define	l2b(l)	(setbit(0x0,(l-1)))
+#define	UBLBIT	(1<<(UBLANK-1))
 
 /* letter values. also worth caching per thread. All blanks are worth 0. */
 const uint8_t Vals[32] = {

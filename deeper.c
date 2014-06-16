@@ -42,7 +42,9 @@
 
 /* dictionary */
 gn_t *gaddag = NULL;		// dictionary data (mmapped buffer) RDONLY
+bs_t *bitset = NULL;		// bitset data (mmapped) RDONLY
 int dfd = -1;			// dictionary file desc
+int bsfd = -1;			// bitset filed desc
 char *dfn = NULL;		// dictionary file name
 unsigned long g_cnt = 0;	// how big is gaddag (in entries)
 
@@ -76,6 +78,10 @@ int doscore = 0;
 /* job/process control */
 int globaldone = 0;		// set to stop all threads.
 
+
+/* fast inline functions. */
+
+
 void
 usage(char *me)
 {
@@ -104,6 +110,20 @@ usage(char *me)
 }
 
 /* utility funcs. */
+
+inline bs_t
+lstr2bs(letter_t *lstr)
+{
+	int i;
+	bs_t bs = 0;
+
+	while (lstr[i] != '\0') {
+		setbit(bs, lstr[i]-1);
+		i++;
+	}
+	return bs;
+}
+
 inline int
 c2lstr(char *cstr, char *lstr, int played)
 {
@@ -224,6 +244,7 @@ getdict(char *name)
 	struct stat st;
 	size_t len;
 
+	ASSERT(strlen(DFNEND) >= strlen(BSNEND));
 	if (name == NULL) {
 		name = DDFN;
 	}
@@ -236,6 +257,7 @@ getdict(char *name)
 	}
 	strcpy(fullname, name);
 	strcat(fullname, DFNEND);
+
 	dfd = open(fullname, O_RDONLY);
 	if (dfd < 0) {
 		VERB(VNORM, "gaddag file %s failed to open\n", fullname) {
@@ -263,6 +285,41 @@ getdict(char *name)
 		}
 		return -4;
 	}
+
+	strcpy(fullname, name);
+	strcat(fullname, BSNEND);
+
+	bsfd = open(fullname, O_RDONLY);
+	if (bsfd < 0) {
+		VERB(VNORM, "bitset file %s failed to open\n", fullname) {
+			perror("open");
+		}
+		return -1;
+	}
+	rv = fstat(bsfd, &st);
+	if (rv < 0) {
+		VERB(VNORM, "cannot fstat open file %s\n", fullname) {
+			perror("fstat");
+		}
+		return -2;
+	}
+	len = st.st_size;
+	if (len % sizeof(bs_t)) {
+		vprintf(VNORM, "bitset data not aligned properly\n");
+		return -3;
+	}
+	if ((len/sizeof(bs_t)) != g_cnt) {
+		vprintf(VNORM, "bitset data does not match gaddag size\n");
+		return -5;
+	}
+	bitset = (bs_t *)mmap(0, len, PROT_READ, MAP_SHARED, bsfd, 0);
+	if (bitset == MAP_FAILED) {
+		VERB(VNORM, "failed to mmap %d bytes of bitset\n", len) {
+			perror("mmap");
+		}
+		return -4;
+	}
+
 	return g_cnt;
 }
 
@@ -439,6 +496,58 @@ cmplgl(letter_t l, letter_t g)
 	}
 	return (l - g);
 }
+
+inline
+int findl(char *s, char c)
+{
+	return (strchr(s,c) - s);
+}
+
+/* return the next letter. */
+inline letter_t
+nextl(bs_t bs, int *curid)
+{
+	letter_t l;
+	int idbs = bitset[*curid];
+
+	l = ffs(bs);
+	*curid += popc(idbs<<(32-l));
+}
+
+/*
+ * bsi: bitset iterator. Does what mi does with bitsets.
+ * IN: sorted array of letters. May contain MARK, SEP and blanks.
+ * IN: nodeid.
+ * IN/OUT: index of letter to be used
+ * IN/OUT: current node id
+ * OUT: continue or end of matches value (0=no more matches, 1=continue)
+ * Initial call: strndx=0 and curid=-1.
+ */
+int
+bsi(letter_t *s, int nodeid, int *i, int *curid)
+{
+	bs_t rbs;
+	bs_t idbs;
+	bs_t cbs;
+	gn_t curnode;
+	letter_t l;
+
+	rbs = lstr2bs(s);
+	idbs = bitset[*curid];
+	cbs = rbs & idbs;
+
+/* damm blanks. */	
+
+	if (cbs != 0) {
+		l = ffs(cbs);
+		*i = findl(s, l);
+		*curid = popc(idbs<<(32-l));
+	} else {
+	}
+
+}
+
+
 
 /*
  * match iterator: non-recursive iteration function for letters against
@@ -1264,6 +1373,74 @@ rne(rack_t *r)
 			return 1;
 	}
 	return 0;
+}
+
+
+/* with bitsets. should be simpler. maybe. */
+int
+Gi2(board_t *b, move_t *m, int pos, rack_t *r, int nodeid, int *i, int *curid, letter_t *L, bs_t *bs)
+{
+	int lid;
+	int ac = m->col;
+	int ar = m->row;
+	letter_t *w = m->tiles;
+	letter_t BL;
+
+DBG(DBG_GEN, "at %d,%d(%-d) with bs %x in node %d",  ar,ac,pos, *bs, nodeid) {
+	printf(" ~word=\"");
+	printlstr(w);
+	printf("\", rack=\"");
+	printlstr(r->tiles);
+	printf("\"\n");
+}
+	BL = b->spaces[ar][ac+pos].f.letter;
+	if (BL) {
+DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(BL), ar, ac,);
+		*bs = l2b(BL);
+/*
+		if ((*i)++ > 0) return 0;
+		if (*curid < 0) {
+			*curid = nodeid;
+		}
+		*curid = findin(deblank(BL), *curid);
+		if (*curid != -1) {
+			*L = BL;
+DBG(DBG_GEN, "found match %c node=%d\n", l2c(BL), *curid);
+			return 1;
+		}
+*/
+	} else {
+		bs_t rbs = lstr2bs(r->tiles);
+		if (*curid < 0) {
+			*curid = nodeid;
+			*bs = rbs & bitset[*curid];
+		}
+		if (*bs == UBLBIT) {
+			*curid = nodeid;
+			*bs = rbs & ALLPHABITS;
+		}
+		*L = nextl(*bs, &curid);
+		return 1;
+	}
+	return 0;
+
+#ifdef BOOHOO
+		if (*curid >= 0) {
+DBG(DBG_GEN, "(%d)Push %c back on rack\n", *i, l2c(*L));
+			r->tiles[*i] = *L;
+		} else {
+			if (!rne(r)) return 0;
+		}
+		while (mi(r->tiles, nodeid, i, curid)) {
+			*L = r->tiles[*i];
+			r->tiles[*i] = MARK;
+DBG(DBG_GEN, "matched %c i=%d, node=%d\n", l2c(*L), *i, *curid);
+			return 1;
+		}
+	}
+	*L = '\0';
+	return 0;
+#endif
 }
 
 /* turn Gen into an itertator, just like mi. */
