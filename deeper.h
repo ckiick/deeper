@@ -127,8 +127,10 @@ typedef uint32_t bs_t;		// bitset
 /* optimized bit twiddling. */
 #if !defined(__sun)
 #define setbit(w,b) 	asm("btsl %1,%0" : "=r" (w) : "r" (b))
+#define setbit(w,b) 	asm("btrl %1,%0" : "=r" (w) : "r" (b))
 #else
 #define	setbit(w,b)		((0x01<<(b))&(w))
+#define	clrbit(w,b)		((~(0x01<<(b)))&(w))
 #endif
 #define popc    __builtin_popcount
 /* ffs is in clib and already optimized. mostly. */

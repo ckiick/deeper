@@ -1318,7 +1318,58 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 		prelen = ndx + 1;
 	}
 	lp = &(w[ndx]); w[ndx+1] = '\0';
+/*
+assume we have ALL the locals for this, plus whatever we use.
+Don't be clever, just make it work.
+
+	char *rlp = (char *)1;
+initial call: rlp=1, curid=-1, bs=0,bl=0, *lp=0 [nodeid,curcol] -> rv
+	int Gi(everything) {
+	while (rlp != NULL) {
+		bitset_t bl = rbs & UBLBIT;
+		bitset_t bs = 0;
+		bitset_t rbs = 0;
+		int curid = -1;
+
+		*lp = b->spaces[ar][curcol].f.letter;
+		if (*lp != '\0') {
+			rlp = NULL;
+			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(*lp)));
+		} else {
+			if (curid == -1) {
+				rbs = lstr2bs(r->tiles);
+				curid = nodeid;
+				if (bl) bs = ALLPHABITS & bitset[nodeid];
+				else bs = rbs & bitset[nodeid];
+			} else {
+				if (bl) *rlp = UBLANK;
+				else *rlp = *lp;
+			}
+			if (bs == 0) && (bl) {
+				bl = 0;
+				bs = rbs & bitset[nodeid];
+				curid = nodeid;
+			}
+			if (bs == 0) {
+				rlp = NULL;
+				*lp = '\0';
+				break;
+			} else {
+				*lp = ffs(bs);
+				ASSERT(*lp != 0);
+				if (bl) rlp = strchr(r->tiles, UBLANK);
+				else rlp = strchr(r->tiles, *lp);
+				ASSERT(rlp != NULL);
+				*rlp = MARK;
+				curid += popc(bitset[nodeid] << (32 - *lp));
+				*lp |= bl;
+			}
+		}
+	}
+
+
 	while (Gi(b, m, pos, r, nodeid, &i, &curid, lp)) {
+*/
 DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(*lp)) {
 	printlstr(r->tiles); printf("\n");
 }
@@ -1375,16 +1426,63 @@ rne(rack_t *r)
 	return 0;
 }
 
+int
+Gi2(board_t *b, move_t *m, int pos, rack_t *r, int nodeid, int *curid, letter_t *L, int *i, bs_t *bs)
+{
+	letter_t ml;
+	bs_t rbs = lstr2bs(r->tiles);
+
+	if (r->tiles[*i] == '\0') return 0;
+	bl = is_pblank(r->tiles[*i]);
+	if (*curid == - 1) {
+		*bs = rbs;
+		*curid = nodeid;
+	} else {
+		r->tiles[*i] = *L;
+	}
+	ml = ibs(bs, &curid);
+	if (ml) {
+		if (bl) *L = blankgl(ml);
+		else *L = ml;
+	} else {
+		if ((!is_pblank(r->tiles[*i])) && (rbs & UBLBIT))
+		{
+			bs = ALLPHABITS;
+			*curid = nodeid;
+			ml = ibs(bs, &curid);
+		} else {
+			*i = strlen(r->tiles);
+			return 0;
+		}
+	}
+	*i = findl(r->tiles, ml);
+	r->tiles[*i] = MARK;
+	return 1;
+}
+		bs_t bs;
+		if (*curid >= 0) {
+DBG(DBG_GEN, "(%d)Push %c back on rack\n", *i, l2c(*L));
+			r->tiles[*i] = *L;
+		} else {
+			if (!rne(r)) return 0;
+		}
+		while (mi(r->tiles, nodeid, i, curid)) {
+			*L = r->tiles[*i];
+			r->tiles[*i] = MARK;
+DBG(DBG_GEN, "matched %c i=%d, node=%d\n", l2c(*L), *i, *curid);
+			return 1;
+		}
+	}
+}
 
 /* with bitsets. should be simpler. maybe. */
 int
-Gi2(board_t *b, move_t *m, int pos, rack_t *r, int nodeid, int *i, int *curid, letter_t *L, bs_t *bs)
+bsi(board_t *b, int pos, rack_t *r, int nodeid, int *curid, bs_t *bs)
 {
-	int lid;
 	int ac = m->col;
 	int ar = m->row;
-	letter_t *w = m->tiles;
-	letter_t BL;
+	letter_t L;
+
 
 DBG(DBG_GEN, "at %d,%d(%-d) with bs %x in node %d",  ar,ac,pos, *bs, nodeid) {
 	printf(" ~word=\"");
@@ -1393,38 +1491,52 @@ DBG(DBG_GEN, "at %d,%d(%-d) with bs %x in node %d",  ar,ac,pos, *bs, nodeid) {
 	printlstr(r->tiles);
 	printf("\"\n");
 }
-	BL = b->spaces[ar][ac+pos].f.letter;
-	if (BL) {
-DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(BL), ar, ac,);
-		*bs = l2b(BL);
-/*
-		if ((*i)++ > 0) return 0;
-		if (*curid < 0) {
-			*curid = nodeid;
-		}
-		*curid = findin(deblank(BL), *curid);
-		if (*curid != -1) {
-			*L = BL;
-DBG(DBG_GEN, "found match %c node=%d\n", l2c(BL), *curid);
-			return 1;
-		}
-*/
+	L = b->spaces[ar][ac+pos].f.letter;
+	if (L) {
+		if (*curid >= 0) return 0;
+DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(L), ar, ac,);
+		*bs = l2b(deblank(L));
+		*bs |= bitset[nodeid];
+		*curid = nodeid;
 	} else {
-		bs_t rbs = lstr2bs(r->tiles);
-		if (*curid < 0) {
+		if (*curid == -1) {
 			*curid = nodeid;
 			*bs = rbs & bitset[*curid];
 		}
 		if (*bs == UBLBIT) {
 			*curid = nodeid;
-			*bs = rbs & ALLPHABITS;
+			*bs = ALLPHABITS & bitset[*curid];
 		}
+	}
+	if (*bs == 0) {
+		return 0;
+	}
+	*L = nextl(*bs, &curid);
+	bitclr(*bs, *L);
+	return *L;
+
+#ifdef BOOHOO
+
+		if (*bs == -1) {
+		}
+		if (*bs <= 0) {
+			*curid = nodeid;
+		}
+		bs_t rbs = lstr2bs(r->tiles);
+		if (*curid < 0) {
+			*curid = nodeid;
+		}
+		if (*bs == UBLBIT) {
+			*bs = ALLPHABITS;
+		} else {
+			*bs = rbs;
+		}
+		*bs &= bitset[*curid];
 		*L = nextl(*bs, &curid);
 		return 1;
 	}
 	return 0;
 
-#ifdef BOOHOO
 		if (*curid >= 0) {
 DBG(DBG_GEN, "(%d)Push %c back on rack\n", *i, l2c(*L));
 			r->tiles[*i] = *L;
