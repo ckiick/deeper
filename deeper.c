@@ -38,6 +38,29 @@
 
 #include "deeper.h"
 
+
+/* inline optimized code. Use -O4 or so to get really good perf */
+#ifdef _popc
+inline int
+popc(uint32_t w)
+{
+        int c;
+        _popc(w,c);
+        return c;
+}
+#endif
+
+/* ffb = find first bit. ffs is taken. */
+#ifdef _ffs
+inline int
+ffb(uint32_t w)
+{
+        int c;
+        _ffs(w,c);
+        return c;
+}
+#endif
+
 /* Globals. */
 
 /* dictionary */
@@ -119,7 +142,7 @@ lstr2bs(letter_t *lstr)
 
 	while (lstr[i] != '\0') {
 		setbit(bs, lstr[i]-1);
-// printf("set bit %d at %d, result %x\n", lstr[i], i, bs);
+//printf("set bit %d at %d, result %x\n", lstr[i], i, bs);
 		i++;
 	}
 	return bs;
@@ -511,7 +534,7 @@ nextl(bs_t bs, int *curid)
 	letter_t l;
 	int idbs = bitset[*curid];
 
-	l = ffs(bs);
+	l = ffb(bs);
 	*curid += popc(idbs<<(32-l));
 }
 
@@ -540,7 +563,7 @@ bsi(letter_t *s, int nodeid, int *i, int *curid)
 /* damm blanks. */	
 
 	if (cbs != 0) {
-		l = ffs(cbs);
+		l = ffb(cbs);
 		*i = findl(s, l);
 		*curid = popc(idbs<<(32-l));
 	} else {
@@ -1285,9 +1308,8 @@ prechopl(letter_t *w) {
 }
 
 
-/* GoOn using gen iterator Gi. Still recursive. */
+/* GoOn with inline Gen. Still recursive. */
 /* initial call with pos=0, nodeid=0, and m->tiles empty. */
-/* fix up- directional. */
 int
 GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid)
 {
@@ -1302,7 +1324,6 @@ GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid)
 	int ndx = 0;
 	int prelen;
 	int curcol = ac;
-	letter_t *lp;
 	char *rlp = (char *)1;
 	bs_t rbs = 0;
 	bs_t bl = 0;
@@ -1323,26 +1344,18 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	} else {
 		prelen = ndx + 1;
 	}
-	lp = &(w[ndx]); w[ndx+1] = '\0';
-/*
-assume we have ALL the locals for this, plus whatever we use.
-Don't be clever, just make it work.
-*/
-/*
-initial call: rlp=1, curid=-1, bs=0,bl=0, *lp=0 [nodeid,curcol] -> rv
-	int Gi(everything) 
-*/
-	while (rlp != NULL) {
+	w[ndx+1] = '\0';
 
-DBG(DBG_GOON, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs, bl,  bs, curid, rlp, l2c(*lp)) {
+	while (rlp != NULL) {
+DBG(DBG_GOON, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
 
 }
 		pl = b->spaces[ar][curcol].f.letter;
 		if (pl != '\0') {
-DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(*lp), ar, curcol);
-			*lp = pl;
+DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), ar, curcol);
+			w[ndx] = pl;
 			rlp = NULL;
-			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(*lp)))-1;
+			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(w[ndx])))-1;
 		} else {
 			if (curid == -1) {
 				rbs = lstr2bs(r->tiles);
@@ -1353,8 +1366,8 @@ DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(*lp), ar, curcol);
 DBG(DBG_GOON, "first bl=%x, rbs=%x, id=%d, bs=%x\n", bl, rbs, nodeid, bs);
 			} else {
 				if (bl) *rlp = UBLANK;
-				else *rlp = *lp;
-DBG(DBG_GOON, "Pop %c at %d back to\n", l2c(*lp), ndx);
+				else *rlp = w[ndx];
+DBG(DBG_GOON, "Pop %c at %d back to\n", l2c(w[ndx]), ndx);
 			}
 			if ((bs == 0) && (bl)) {
 				bl = 0;
@@ -1363,10 +1376,10 @@ DBG(DBG_GOON, "Pop %c at %d back to\n", l2c(*lp), ndx);
 			}
 			if (bs == 0) {
 				rlp = NULL;
-				*lp = '\0';
+				w[ndx] = '\0';
 				break;
 			} else {
-				pl = ffs(bs);
+				pl = ffb(bs);
 				ASSERT(pl != 0);
 DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 	printlstr(r->tiles); printf("\n");
@@ -1377,15 +1390,11 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				*rlp = MARK;
 				curid += popc(bitset[curid] << (32 - pl)) -1;
 				pl |= bl;
-				*lp = pl;
+				w[ndx] = pl;
 				clrbit(bs, (int)pl-1);
-//printf("pl=%d bs=%x curid=%d\n", pl, bs, curid);
 			}
 		}
-/*
-	while (Gi(b, m, pos, r, nodeid, &i, &curid, lp)) 
-*/
-DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(*lp)) {
+DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(w[ndx])) {
 	printlstr(r->tiles); printf("\n");
 }
 		if ((gf(gaddag[curid])) && nldh(b, ar, curcol, pos)) {
@@ -1415,7 +1424,7 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
 			if ((sepid != -1) && nldl(b, ar, curcol) && (curcol < 14)) {
 				cid = gc(gaddag[sepid]);
-DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d\n", ar, m->col, cid) {
+DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d", ar, m->col, cid) {
 	printf(" - word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");

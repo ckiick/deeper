@@ -126,19 +126,25 @@ typedef uint32_t bs_t;		// bitset
 
 /* optimized bit twiddling. */
 #if !defined(__sun)
+#define	ffb	__builtin_ffs
+#define popc    __builtin_popcount
 #define setbit(w,b) 	asm("btsl %1,%0" : "+r" (w) : "g" (b))
 #define clrbit(w,b) 	asm("btrl %1,%0" : "+r" (w) : "g" (b))
 #else
-#define	setbit(w,b)		((0x01<<(b))|(w))
-#define	clrbit(w,b)		((~(0x01<<(b)))&(w))
+#define _popc(w,c)	asm("popc %1,%0\t\n" : "+r" (c) : "r" (w))
+#define	setbit(w,b)		((w)|=(0x01<<(b)))
+#define	clrbit(w,b)		((w)&=(~(0x01<<(b))))
+#define _ffs(w,c)	asm("neg %1, %0\t\n"			\
+				"xnor %1, %0, %0\t\n"		\
+				"popc %0, %0\t\n"		\
+				"movrz %1, %%g0, %0\t\n"	\
+				: "+r" (c) : "r" (w))
 #endif
-#define popc    __builtin_popcount
-/* ffs is in clib and already optimized. mostly. */
+
 
 /* letter to bit. l must be A-Z^?. Cannot be played blank.*/
 #define	l2b(l)	(setbit(0x0,(l-1)))
 #define	UBLBIT	(1<<(UBLANK-1))
-
 /* letter values. also worth caching per thread. All blanks are worth 0. */
 const uint8_t Vals[32] = {
 /* NULL,  A, B, C, D, E, F, G, H, I,  J, K, L, M, N, O, */
