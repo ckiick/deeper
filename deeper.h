@@ -144,7 +144,10 @@ typedef uint32_t bs_t;		// bitset
 
 /* letter to bit. l must be A-Z^?. Cannot be played blank.*/
 #define	l2b(l)	(setbit(0x0,(l-1)))
+
 #define	UBLBIT	(1<<(UBLANK-1))
+#define SEPBIT	(1<<(SEP-1))
+
 /* letter values. also worth caching per thread. All blanks are worth 0. */
 const uint8_t Vals[32] = {
 /* NULL,  A, B, C, D, E, F, G, H, I,  J, K, L, M, N, O, */
@@ -316,3 +319,17 @@ typedef struct Gstats {
 	int hiscore;		/* highest game score so far */
 } gstats_t;
 
+
+/* internal use for keeping running score during movegen. */
+typedef struct _scthingy {
+	int ts;		/* tile non-bonus score */
+	int tbs;	/* tile with letter bonus score */
+	int ssf;	/* score so far */
+	int ends;	/* points at end of word */
+	int played;	/* count of tiles played, so far */
+	int ttl_ts;	/* total non-bonus tile score */
+	int ttl_tbs;	/* total tile with letter bonus score */
+	int bingo;	/* if we used all 7 letters in rack */
+	int wmult;	/* product of word multipliers */
+	int xssf;	/* cross score so far */
+} scthingy_t;

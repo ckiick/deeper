@@ -527,15 +527,18 @@ int findl(char *s, char c)
 	return (strchr(s,c) - s);
 }
 
-/* return the next letter. */
+/* return the next letter, and fix up bs */
 inline letter_t
-nextl(bs_t bs, int *curid)
+nextl(bs_t *bs, int *curid)
 {
 	letter_t l;
 	int idbs = bitset[*curid];
 
 	l = ffb(bs);
+	if (l==0) return 0;
 	*curid += popc(idbs<<(32-l));
+	clrbit(*bs, l-1);
+	return l;
 }
 
 /*
@@ -973,16 +976,15 @@ score(move_t *m, board_t *b, int doit, int playthrough)
 
 DBG(DBG_SCORE,"in score with (%d,%d)->%s %d letters\n", m->row, m->col,  m->dir == M_HORIZ ? "horiz" : "vert", m->lcount);
 
+	deltav = 1 - m->dir;
+	deltah = m->dir;
+	ortho = 1 - m->dir;
 	if (m->dir == M_HORIZ) {
 		ends = b->spaces[m->row][m->col].f.vmls;
 DBG(DBG_SCORE, "get H beginning end score %d at (%d, %d)\n", ends, m->row, m->col);
-		deltav = 1;
-		ortho = M_VERT;
 	} else {
 		ends = b->spaces[m->row][m->col].f.hmls;
 DBG(DBG_SCORE, "get V beginning end score %d at (%d, %d)\n", ends, m->row, m->col);
-		deltah = 1;
-		ortho = M_HORIZ;
 	};
 DBG(DBG_SCORE, "moving %d so deltah=%d and deltav=%d\n", m->dir, deltah, deltav);
 
@@ -1277,37 +1279,6 @@ nldr(board_t *b, int ar, int ac) {
 }
 
 void inline
-appendl(letter_t *w, letter_t l) {
-	int i = strlen(w);
-	w[i] = l;
-	w[i+1]='\0';
-}
-
-void inline
-apchopl(letter_t *w) {
-	int i = strlen(w);
-	w[i-1] = '\0';
-}
-
-void inline
-prependl(letter_t l, letter_t *w) {
-	letter_t c;
-	int i = strlen(w);
-	for (i = strlen(w)+1; i > 0; i--) {
-		w[i] = w[i-1];
-	}
-	w[0] = l;
-}
-
-void inline
-prechopl(letter_t *w) {
-	int i = 1;
-	do {
-		w[i-1] = w[i];
-	} while (w[i++] != '\0');
-}
-
-
 /* GoOn with inline Gen. Still recursive. */
 /* initial call with pos=0, nodeid=0, and m->tiles empty. */
 int
@@ -1420,6 +1391,7 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 		}
 		/* have to handle the ^ */
 		if (pos <= 0) {
+			if (SEPBIT & bitset[cid]);
 			sepid = findin(SEP, cid);
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
 			if ((sepid != -1) && nldl(b, ar, curcol) && (curcol < 14)) {
