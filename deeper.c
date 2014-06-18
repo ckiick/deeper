@@ -87,6 +87,7 @@ static const move_t emptymove = { 0, 0, 0, 0, 0, 0, { 0,0,0,0,0,0,0,0,0,0,0,0,0,
 board_t emptyboard;		// no tiles played
 board_t startboard;		// legal start moves marked
 position_t startp;
+static const scthingy_t newsct = { 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 };
 
 /* diag, debug and stats */
 int verbose = 0;		// level of info output
@@ -534,7 +535,7 @@ nextl(bs_t *bs, int *curid)
 	letter_t l;
 	int idbs = bitset[*curid];
 
-	l = ffb(bs);
+	l = ffb(*bs);
 	if (l==0) return 0;
 	*curid += popc(idbs<<(32-l));
 	clrbit(*bs, l-1);
@@ -952,6 +953,42 @@ DBG(DBG_MLS, "%cmls set to %d at (%d,%d)\n", dc? 'h':'v', val, r, c);
 	}
 }
 
+/* fold in the last letter used, prepare for new letter */
+inline void
+updatescore(scthingy_t *sct)
+{
+	if (sct->ttl_wm ==0) sct->ttl_wm = 1;
+	if (sct->wm == 0) sct->wm = 1;
+	sct->ttl_ts += sct->ts;
+	sct->ttl_tbs += sct->tbs;
+	sct->ttl_wm *= sct->wm;
+	if (sct->lms > 0) {
+		sct->ttl_xs += sct->wm * (sct->lms + sct->tbs);
+	}
+	sct->played += sct->play;
+	sct->ts = 0; sct->tbs = 0; sct->wm=1; sct->lms = 0; sct->play = 0;
+}
+
+/*
+ * given a score thingy, tell me what the current score is.
+ * called when the final bit is hit.
+ */
+inline int
+finalscore(scthingy_t sct)
+{
+	int fsc = 0;
+	updatescore(&sct);
+	/* bingo */
+	if (sct.played >= RACKSIZE) {
+		fsc += BINGOBONUS;
+	}
+	/* cross word scores */
+	fsc += sct.ttl_xs;
+	/* word score */
+	fsc += sct.ttl_tbs * sct.ttl_wm;
+	return fsc;
+}
+
 /*
  * return the value of placing move m on board b.   If doit is set,
  * actually place the tiles, otherise we are just looking.
@@ -1278,11 +1315,10 @@ nldr(board_t *b, int ar, int ac) {
 	return ((ac == 14) || (b->spaces[ar][ac+1].f.letter == 0));
 }
 
-void inline
 /* GoOn with inline Gen. Still recursive. */
 /* initial call with pos=0, nodeid=0, and m->tiles empty. */
 int
-GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid)
+GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid, scthingy_t sct)
 {
 	int movecnt = 0;
 	int curid = -1;
@@ -1308,6 +1344,9 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	printlstr(r->tiles);
 	printf("\"\n");
 }
+	updatescore(&sct);
+	if (sct.ttl_wm ==0) sct.ttl_wm = 1;
+	if (sct.wm == 0) sct.wm = 1;
 	ndx = strlen(w);	/* depth */
 	if (pos > 0) {
 		prelen = pos;
@@ -1327,6 +1366,15 @@ DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), ar, curcol);
 			w[ndx] = pl;
 			rlp = NULL;
 			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(w[ndx])))-1;
+			sct.ts = lval(pl);
+			sct.tbs = b->spaces[ar][curcol].f.lm * sct.ts;
+			sct.wm = b->spaces[ar][curcol].f.wm;
+			sct.play = 0;
+			if (m->dir == M_HORIZ) {
+				sct.lms = b->spaces[ar][curcol].f.hmls;
+			} else {
+				sct.lms = b->spaces[ar][curcol].f.vmls;
+			}
 		} else {
 			if (curid == -1) {
 				rbs = lstr2bs(r->tiles);
@@ -1363,6 +1411,15 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				pl |= bl;
 				w[ndx] = pl;
 				clrbit(bs, (int)pl-1);
+				sct.ts = lval(pl);
+				sct.tbs = b->spaces[ar][curcol].f.lm * sct.ts;
+				sct.wm =  b->spaces[ar][curcol].f.wm;
+				if (m->dir == M_HORIZ) {
+					sct.lms = b->spaces[ar][curcol].f.hmls;
+				} else {
+					sct.lms = b->spaces[ar][curcol].f.vmls;
+				}
+				sct.play = 1;
 			}
 		}
 DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(w[ndx])) {
@@ -1370,7 +1427,7 @@ DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(w[ndx])) {
 }
 		if ((gf(gaddag[curid])) && nldh(b, ar, curcol, pos)) {
 			if (doscore) {
-				m->score = score(m, b, 0, 1);
+				m->score = finalscore(sct);
 			}
 			VERB(VNORM, "") {
 				printmove(m, pos);
@@ -1386,7 +1443,7 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 	printf("\"\n");
 }
 			if (pos <= 0) m->col--;
-			movecnt += GoOn2(b, m, pos, r,  cid);
+			movecnt += GoOn2(b, m, pos, r,  cid, sct);
 			if (pos <= 0) m->col++;
 		}
 		/* have to handle the ^ */
@@ -1401,7 +1458,7 @@ DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d", ar, m->col, cid) {
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
-				movecnt += GoOn2(b, m, prelen, r, cid);
+				movecnt += GoOn2(b, m, prelen, r, cid, sct);
 			}
 		}
 	}
@@ -1873,7 +1930,7 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			argmove.tiles[0] = '\0';
 			qsort(r.tiles, strlen(r.tiles), 1, lcmp);
 			vprintf(VNORM, "Possible moves for %s:\n", argv[optind]);
-			moves = GoOn2(&sb, &argmove, 0, &r, 0);
+			moves = GoOn2(&sb, &argmove, 0, &r, 0, newsct);
 			vprintf(VNORM, "created %d starting moves from %s\n", moves, argv[optind]);
 		}
 		if (!errs && action&ACT_ANAGRAM) {

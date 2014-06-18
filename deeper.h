@@ -322,14 +322,16 @@ typedef struct Gstats {
 
 /* internal use for keeping running score during movegen. */
 typedef struct _scthingy {
-	int ts;		/* tile non-bonus score */
-	int tbs;	/* tile with letter bonus score */
-	int ssf;	/* score so far */
-	int ends;	/* points at end of word */
-	int played;	/* count of tiles played, so far */
-	int ttl_ts;	/* total non-bonus tile score */
-	int ttl_tbs;	/* total tile with letter bonus score */
-	int bingo;	/* if we used all 7 letters in rack */
-	int wmult;	/* product of word multipliers */
-	int xssf;	/* cross score so far */
+	/* totals */
+	short ttl_ts;	/* total non-bonus tile score */
+	short ttl_tbs;	/* total tile with letter bonus score */
+	short ttl_wm;	/* product of word multipliers */
+	short ttl_xs;	/* total score from cross words */
+	short played;	/* count of tiles played, so far (from rack) */
+	/* current space, letter */
+	short ts;		/* tile non-bonus score */
+	short tbs;	/* tile with letter bonus score */
+	short lms;	/* cross word letter move score */
+	short wm;		/* this spaces word multiplier */
+	short play;	/* 1 if this is a tile, 0 if playing through */
 } scthingy_t;
