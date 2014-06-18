@@ -814,11 +814,13 @@ makemove(board_t *b, move_t *m, int playthrough)
 	if (strlen(m->tiles) == 0) {
 		return 0;
 	}
+	/* make sure we are really at the start */
+//	ASSERT( ?  );
 	for (i=0; m->tiles[i] != '\0'; cr+=dr,cc+=dc) {
-		ASSERT(((cr>=0)&&(cr<BOARDY)) && ((cc>=0)&&(cc<BOARDX)))
+		ASSERT(((cr>=0)&&(cr<BOARDY)) && ((cc>=0)&&(cc<BOARDX)));
 		sp = &(b->spaces[cr][cc]);
 		if (sp->f.letter != '\0') {
-// no...		tts += lval[sp->f.letter];
+			tts += lval(sp->f.letter);
 			if (playthrough) {
 				if (m->tiles[i] != sp->f.letter) {
 vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->f.letter), sp->f.letter);
@@ -829,17 +831,77 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			ts = lval(m->tiles[i]);
 			tts += ts;
 			updatemls(b, m->dir, cr, cc, ts);
+			sp->f.letter = m->tiles[i];
 			i++;
 		}
 	}
 	/* handle non-playthrough prefix plays */
 	if (!playthrough) {
-		while ((cr<BOARDY) && (cc<BOARDX) && (sp->f.letter != '\0')) {
-			tts += lval(sp->f.letter);
-			cr+=dr;cc+=dc;
+		while ((cr<BOARDY) && (cc<BOARDX)) {
+			sp = &(b->spaces[cr][cc]);
+			if (sp->f.letter != '\0') {
+				tts += lval(sp->f.letter);
+				cr+=dr;cc+=dc;
+			} else {
+				break;
+			}
 		}
 	}
-	/* do "before" end */
+	/* do "before" end, if there's a space */
+	if (m->dir == M_HORIZ) {
+		if (m->col > 0) {
+			sp = &(b->spaces[m->row][m->col-1]);
+			ASSERT(sp->f.letter == '\0');
+			/* stash sum under first letter */
+			b->spaces[m->row][m->col].f.vmls = tts;
+			if (!nldl(b, m->row, m->col-1)) {
+				/* it's a bridge space */
+				sp->f.vmls = tts + b->spaces[m->row][m->col-2].f.vmls;
+			} else {
+				sp->f.vmls = tts;
+			}
+		}
+	} else {
+		if (m->row > 0) {
+			sp = &(b->spaces[m->row-1][m->col]);
+			ASSERT(sp->f.letter == '\0');
+			/* stash sum under first letter */
+			b->spaces[m->row][m->col].f.hmls = tts;
+			if (!nldb(b, m->row-1, m->col)) {
+				/* it's a bridge space */
+				sp->f.hmls = tts + b->spaces[m->row-2][m->col].f.hmls;
+			} else {
+				sp->f.hmls = tts;
+			}
+		}
+	}
+	/* do "after" end, if there's a space */
+	if (m->dir == M_HORIZ) {
+		sp = &(b->spaces[cr][cc]);
+		if (cc<MAXC) {
+			ASSERT(sp->f.letter == '\0');
+			/* stash sum under last letter */
+			b->spaces[cr][cc-1].f.vmls = tts;
+			if (!nldr(b, cr, cc)) {
+				/* it's a bridge space */
+				sp->f.vmls = tts + b->spaces[cr][cc+1].f.vmls;
+			} else {
+				sp->f.vmls = tts;
+			}
+		}
+	} else {
+		if (cr<MAXR) {
+			ASSERT(sp->f.letter == '\0');
+			/* stash sum under last letter */
+			b->spaces[cr-1][cc].f.vmls = tts;
+			if (!nlda(b, cr, cc)) {
+				/* it's a bridge space */
+				sp->f.vmls = tts + b->spaces[cr+1][cc].f.vmls;
+			} else {
+				sp->f.vmls = tts;
+			}
+		}
+	}
 }
 
 /*
@@ -1664,9 +1726,10 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			}
 		}
 		if (action & (ACT_SCORE|ACT_MOVE)) {
-			sc = score(&argmove, &sb, action&ACT_MOVE, action&ACT_PLAYTHRU);
+//			sc = score(&argmove, &sb, action&ACT_MOVE, action&ACT_PLAYTHRU);
 			vprintf(VNORM, "%s scores %d\n", argv[optind], sc);
 			if (action&ACT_MOVE) {
+makemove(&sb, &argmove, 1);
 				VERB(VNOISY, "results of move:\n") {
 					showboard(sb, B_TILES);
 					showboard(sb, B_HMLS);

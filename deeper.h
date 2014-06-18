@@ -79,6 +79,8 @@ typedef uint64_t hrtime_t;
 #define	BOARDY		BOARDSIZE
 #define STARTR		7
 #define STARTC		7
+#define MAXR		14
+#define	MAXC		14
 char coltags[BOARDX+1] = "ABCDEFGHIJKLMNO";
 
 /* gaddag stuff */
