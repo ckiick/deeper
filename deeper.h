@@ -51,6 +51,7 @@ typedef uint64_t hrtime_t;
 #define DBG_GOON	0x00000800	// first cut at movegen
 #define DBG_GEN		0x00001000	// other half of movegen
 #define DBG_MATCH	0x00002000	// match (iterator)
+#define DBG_VERIFY	0x00004000	// show verify output.
 #define DBG_DBG		0x40000000	// debugger: debug thyself.
 #define DBG_ALL		0x7FFFFFFF	// extremely noisy
 #define DBG_NONE	0x80000000	// doesn't match anything
@@ -108,8 +109,8 @@ typedef uint32_t bs_t;		// bitset
 #define is_pblank(n)	((n) & BB) 	// is this a played blank
 #define is_ublank(n)	((n)==UBLANK)	// unplayed blank
 #define is_blank(n)	(is_pblank(n)||is_ublank(n))
-#define is_rvalid(l)	((l)<=UBLANK)	// A-Z, unplayed blank, NULL
-#define is_bvalid(l)	(((l) & ~BB) <= UBLANK) // A-Z, played blank, NULL
+#define is_rvalid(l)	(((l)<=UBLANK)||((l)==SEP))// A-Z, unplayed blank, NULL
+#define is_bvalid(l)	(((l) & ~BB) < UBLANK) // A-Z, played blank, NULL
 
 /* cvt a letter to a char. Assumes is_bvalid(l) is true */
 #define l2c(l)		(((l)==UBLANK) ? '?' : ((l)|0x40))
@@ -119,6 +120,7 @@ typedef uint32_t bs_t;		// bitset
 #define c2l(c)	(((c)=='?') ? UBLANK : ((c)&0x3F))
 #define UNPLAYED	0
 #define	PLAYED		1
+#define JUSTPLAY	2
 
 #define	gl2l(l)		(l)
 #define blankgl(gl)	(gl2l(gl)|BB)

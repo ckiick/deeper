@@ -147,6 +147,16 @@ lstr2bs(letter_t *lstr)
 	return bs;
 }
 
+
+/*
+ * convert character string cstr to a letter string lstr. detects invalid
+ * characters.  Returns number of invalid characters, but does conversion
+ * even if there are some.
+ * played determines which chars are valid:
+ * UNPLAYED: A-Z,?,^ (and null char)
+ * PLAYED: A-Z,a-z (and null)
+ * JUSTPLAY: valid for either PLAYED or UNPLAYED
+ */
 inline int
 c2lstr(char *cstr, char *lstr, int played)
 {
@@ -157,14 +167,22 @@ c2lstr(char *cstr, char *lstr, int played)
 	if (cstr == NULL) return 0;
 	while (cstr[i] != '\0') {
 		lstr[i] = c2l(cstr[i]);
-		if (!played)
+		if (played == UNPLAYED) {
 			if (!is_rvalid(lstr[i])) inv++;
-		else
+		} else if (played == PLAYED) {
 			if (!is_bvalid(lstr[i])) inv++;
+		} else if (played == JUSTPLAY) {
+			if ((!is_bvalid(lstr[i])) && (!is_rvalid(lstr[i])))
+				inv++;
+		}
 		i++;
 	}
 	lstr[i] = '\0';
-	return inv;
+	if (played != JUSTPLAY) {
+		return inv;
+	} else {
+		return 0;
+	}
 }
 
 
@@ -741,6 +759,7 @@ DBG(DBG_MLS, "%cmls set to %d at (%d,%d)\n", dc? 'h':'v', val, r, c);
 inline void
 updatescore(scthingy_t *sct)
 {
+DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%hd, tbs=%hd, lms=%hd, wm=%hd, play=%hd\n", sct->ttl_ts, sct->ttl_tbs, sct->ttl_wm, sct->ttl_xs, sct->played, sct->ts, sct->tbs, sct->lms, sct->wm, sct->play);
 	if (sct->ttl_wm ==0) sct->ttl_wm = 1;
 	if (sct->wm == 0) sct->wm = 1;
 	sct->ttl_ts += sct->ts;
@@ -763,6 +782,7 @@ finalscore(scthingy_t sct)
 	int fsc = 0;
 	updatescore(&sct);
 	/* bingo */
+DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%hd, tbs=%hd, lms=%hd, wm=%hd, play=%hd\n", sct.ttl_ts, sct.ttl_tbs, sct.ttl_wm, sct.ttl_xs, sct.played, sct.ts, sct.tbs, sct.lms, sct.wm, sct.play);
 	if (sct.played >= RACKSIZE) {
 		fsc += BINGOBONUS;
 	}
@@ -951,9 +971,10 @@ showboard(board_t b, int what)
 }
 
 /* read a move in "std" notation. rv of 0 is success.
+ * Played is passed to c2lstr, see comments there for values.
  */
 int
-parsemove(char *str, move_t *m)
+parsemove(char *str, move_t *m, int played)
 {
 	char *cp;
 	int dd = 0;
@@ -979,6 +1000,7 @@ parsemove(char *str, move_t *m)
 		plen = strlen(str);
 		*cp =':';
 		cp++; // move past :
+		if (plen == 0) return 3;
 	} else {
 		plen = 0;
 		cp = str;	// use whole arg
@@ -993,14 +1015,14 @@ DBG(DBG_ARGS, "plen=%d, len=%d, word=%s\n", plen, len, cp);
 		}
 		if (isupper(str[0]) && isdigit(str[1])) {
 			m->dir = M_VERT;
-			m->col = str[0] - 'A';
+			m->col = (str[0] - 'A');
 			m->row = str[1] - '0';
 			if (plen == 3) {
 				m->row = m->row*10 + (str[2] - '0');
 			}
 		} else if (isdigit(str[0]) && isupper(str[plen-1])) {
 			m->dir = M_HORIZ;
-			m->col = str[plen-1] - 'A';
+			m->col = (str[plen-1] - 'A');
 			m->row = str[0] - '0';
 			if (plen == 3) {
 				m->row = m->row*10 + (str[1] - '0');
@@ -1012,28 +1034,28 @@ DBG(DBG_ARGS, "plen=%d, len=%d, word=%s\n", plen, len, cp);
 		m->row -= 1;
 	}
 
-	if ((m->row < 0) || (m->row > BOARDY) ||
-	    (m->col < 0) || (m->col > BOARDX)) {
+	if ((m->row < 0) || (m->row >= BOARDY) ||
+	    (m->col < 0) || (m->col >= BOARDX)) {
 		return 4;
 	}
 
 	if ((m->dir == M_HORIZ) && ((len + m->col) > BOARDX)) {
-		vprintf(VNORM, "Word of len %d at %d goes off board\n", len, m->col);
+		vprintf(VVERB, "Word of len %d at %d goes off board\n", len, m->col);
 		return 4;
 	}
 	if ((m->dir == M_VERT) && ((len + m->row) > BOARDY)) {
-		vprintf(VNORM, "Word of len %d at %d goes off board\n", len, m->row);
+		vprintf(VVERB, "Word of len %d at %d goes off board\n", len, m->row);
 		return 4;
 	}
 
 	if (len > BOARDSIZE) {
-		vprintf(VNORM, "Word %s of len %d too long\n", str, len);
+		vprintf(VVERB, "Word %s of len %d too long\n", str, len);
 		return 4;
 	}
 	m->lcount = len;
 	/* now the string. */
-	if (c2lstr(cp, m->tiles, PLAYED)) {
-		vprintf(VNORM, "%s had invalid characters\n", cp, len);
+	if (c2lstr(cp, m->tiles, played)) {
+		vprintf(VVERB, "%s had invalid characters\n", cp, len);
 		return 5;
 	}
 	return 0;
@@ -1044,9 +1066,9 @@ void
 printmove(move_t *m, int rev)
 {
 	if (m->dir == M_HORIZ) {
-		printf("%d%c:", m->row, coltags[(m->col)-1]);
+		printf("%d%c:", m->row+1, coltags[m->col]);
 	} else {
-		printf("%c%d:", coltags[(m->col)-1], m->row);
+		printf("%c%d:", coltags[m->col], m->row+1);
 	}
 	if (rev == 0) {
 		printlrstr(m->tiles);
@@ -1072,6 +1094,27 @@ nldh(board_t *b, int ar, int ac, int pos) {
 		return ((ac == 14) || (b->spaces[ar][ac+1].f.letter == 0));
 }
 
+/* no letter directly vertical . */
+inline int
+nldv(board_t *b, int ar, int ac, int pos) {
+	if (pos <= 0)
+		return ((ar == 0) || (b->spaces[ar-1][ac].f.letter == 0));
+	else
+		return ((ar == 14) || (b->spaces[ar+1][ac].f.letter == 0));
+}
+
+/* no letter directly above */
+inline int
+nlda(board_t *b, int ar, int ac) {
+	return ((ar == 0) || (b->spaces[ar-1][ac].f.letter == 0));
+}
+
+/* no letter directly below */
+inline int
+nldb(board_t *b, int ar, int ac) {
+	return ((ar == 0) || (b->spaces[ar+1][ac].f.letter == 0));
+}
+
 /* no letter directly left */
 inline int
 nldl(board_t *b, int ar, int ac) {
@@ -1086,6 +1129,7 @@ nldr(board_t *b, int ar, int ac) {
 
 /* GoOn with inline Gen. Still recursive. */
 /* initial call with pos=0, nodeid=0, and m->tiles empty. */
+/* do vertical moves as well. */
 int
 GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid, scthingy_t sct)
 {
@@ -1100,11 +1144,13 @@ GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid, scthingy_t sct)
 	int ndx = 0;
 	int prelen;
 	int curcol = ac;
+	int currow = ar;
 	char *rlp = (char *)1;
 	bs_t rbs = 0;
 	bs_t bl = 0;
 	bs_t bs = 0;
 	register letter_t pl;
+	int room = 0;
 
 DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	printf(" - word=\"");
@@ -1114,12 +1160,14 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	printf("\"\n");
 }
 	updatescore(&sct);
-	if (sct.ttl_wm ==0) sct.ttl_wm = 1;
-	if (sct.wm == 0) sct.wm = 1;
 	ndx = strlen(w);	/* depth */
 	if (pos > 0) {
 		prelen = pos;
-		curcol += ndx;
+		if (m->dir == M_HORIZ) {
+			curcol += ndx;
+		} else {
+			currow += ndx;
+		}
 	} else {
 		prelen = ndx + 1;
 	}
@@ -1129,20 +1177,20 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 DBG(DBG_GOON, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
 
 }
-		pl = b->spaces[ar][curcol].f.letter;
+		pl = b->spaces[currow][curcol].f.letter;
 		if (pl != '\0') {
-DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), ar, curcol);
+DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 			w[ndx] = pl;
 			rlp = NULL;
 			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(w[ndx])))-1;
 			sct.ts = lval(pl);
-			sct.tbs = b->spaces[ar][curcol].f.lm * sct.ts;
-			sct.wm = b->spaces[ar][curcol].f.wm;
+			sct.tbs = b->spaces[currow][curcol].f.lm * sct.ts;
+			sct.wm = b->spaces[currow][curcol].f.wm;
 			sct.play = 0;
 			if (m->dir == M_HORIZ) {
-				sct.lms = b->spaces[ar][curcol].f.hmls;
+				sct.lms = b->spaces[currow][curcol].f.hmls;
 			} else {
-				sct.lms = b->spaces[ar][curcol].f.vmls;
+				sct.lms = b->spaces[currow][curcol].f.vmls;
 			}
 		} else {
 			if (curid == -1) {
@@ -1179,12 +1227,12 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				pl |= bl;
 				w[ndx] = pl;
 				sct.ts = lval(pl);
-				sct.tbs = b->spaces[ar][curcol].f.lm * sct.ts;
-				sct.wm =  b->spaces[ar][curcol].f.wm;
+				sct.tbs = b->spaces[currow][curcol].f.lm * sct.ts;
+				sct.wm =  b->spaces[currow][curcol].f.wm;
 				if (m->dir == M_HORIZ) {
-					sct.lms = b->spaces[ar][curcol].f.hmls;
+					sct.lms = b->spaces[currow][curcol].f.hmls;
 				} else {
-					sct.lms = b->spaces[ar][curcol].f.vmls;
+					sct.lms = b->spaces[currow][curcol].f.vmls;
 				}
 				sct.play = 1;
 			}
@@ -1192,34 +1240,57 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(w[ndx])) {
 	printlstr(r->tiles); printf("\n");
 }
-		if ((gf(gaddag[curid])) && nldh(b, ar, curcol, pos)) {
-			if (doscore) {
-				m->score = finalscore(sct);
+		if (gf(gaddag[curid])) {
+			if (m->dir == M_HORIZ) {
+				room = nldh(b, currow, curcol, pos);
+			} else {
+				room = nldv(b, currow, curcol, pos);
 			}
-			VERB(VNORM, "") {
-				printmove(m, pos);
+			if (room) {
+				if (doscore) {
+					m->score = finalscore(sct);
+				}
+				VERB(VNORM, "") {
+					printmove(m, pos);
+				}
+				movecnt++;
 			}
-			movecnt++;
 		}
 		cid = gc(gaddag[curid]);
-		if (((pos <= 0) && (curcol > 0))  || ((pos > 0) && (curcol < 14))) {
+		if (m->dir == M_HORIZ) {
+			room = (((pos <= 0) && (curcol > 0))  || ((pos > 0) && (curcol < 14)));
+		} else {
+			room = (((pos <= 0) && (currow > 0))  || ((pos > 0) && (currow < 14)));
+		}
+		if (room) {
 			/* recurse */
 DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, cid) {
 	printf(" word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
-			if (pos <= 0) m->col--;
+			if (pos <= 0) {
+				m->col -= 1 - m->dir;
+				m->row -= m->dir;
+			}
 			movecnt += GoOn2(b, m, pos, r,  cid, sct);
-			if (pos <= 0) m->col++;
+			if (pos <= 0) {
+				m->col += 1 - m->dir;
+				m->row += m->dir;
+			}
 		}
 		/* have to handle the ^ */
-		if (pos <= 0) {
-			if ((SEPBIT & bitset[cid]) && nldl(b, ar, curcol) && (curcol < 14)) {
+		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
+			if (m->dir == M_HORIZ) {
+				room = nldl(b, currow, curcol) && (curcol < 14);
+			} else {
+				room = nlda(b, currow, curcol) && (currow < 14);
+			}
+			if (room) {
 				sepid = cid + popc(bitset[cid] << (32 - SEP))-1;
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
-DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d", ar, m->col, cid) {
+DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
 	printf(" - word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
@@ -1352,6 +1423,77 @@ printlstr(w); printf(" %c %d \n", l2c(w[0]), w[0]);
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 	}
+	/* test parsemove */
+	{
+		move_t tm; int rv; char s[28]="";
+
+		strcpy(s, "H8:ABCDEFG"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv==0) && (tm.dir == M_VERT) && (tm.col == 7) && (tm.row == 7));
+		strcpy(s, "8H:ABCDEFG"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv==0) && (tm.dir == M_HORIZ) && (tm.col == 7) && (tm.row == 7));
+		strcpy(s, "1A:ABCDEFG"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv==0) && (tm.dir == M_HORIZ) && (tm.col == 0) && (tm.row == 0));
+		strcpy(s, "O15:A"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv==0) && (tm.dir == M_VERT) && (tm.col == 14) && (tm.row == 14));
+		strcpy(s, "A1:ABCDEFGHIJKLMNOPQRST"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "15O:AB"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "16A:AB"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "0A:AB"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "P1:AB"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "@1:AB"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "H8:ABBB?C?"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv==0));
+		rv = parsemove(s, &tm, 1);
+
+		ASSERT( (rv!=0));
+		strcpy(s, "H8:ABBBxC?"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "H8:ABBBCC^"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv==0));
+		strcpy(s, "H8:ABBBCC\\"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "H8:"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv==0));
+		strcpy(s, ""); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+
+		ASSERT( (rv!=0));
+		strcpy(s, ""); tm=emptymove;
+		rv = parsemove(NULL, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, "foobar:&"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+		ASSERT( (rv!=0));
+		strcpy(s, ":FUBAR"); tm=emptymove;
+		rv = parsemove(s, &tm, 0);
+VERB(VNOISY, "verify parsemove: rv=%d, dir=%d, row=%d col=%d lcount=%d tiles=", rv, tm.dir, tm.row, tm.col, tm.lcount) {
+printlstr(tm.tiles); printf("\n");
+}
+		ASSERT( (rv!=0));
+	}
 
 }
 #endif /* DEBUG */
@@ -1453,7 +1595,7 @@ main(int argc, char **argv)
 
 		argmove = emptymove;
 DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
-		rv = parsemove(argv[optind], &argmove);
+		rv = parsemove(argv[optind], &argmove, JUSTPLAY);
 
 		if (rv != 0) {
 			vprintf(VNORM, "skipping non-parsable move %s\n", argv[optind]);
