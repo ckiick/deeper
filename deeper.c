@@ -35,9 +35,7 @@
 #include <stdint.h>
 #endif	/* sun */
 
-
 #include "deeper.h"
-
 
 /* inline optimized code. Use -O4 or so to get really good perf */
 #ifdef _popc
@@ -452,10 +450,6 @@ initstuff()
 	}
 	/* mark all legal start moves */
 	startboard = emptyboard; 	// does this still work? YES.
-	for (r = 1; r <= STARTC; r++) {
-		/* there are only 7 unique legal starting positions. */
-		startboard.spaces[STARTR][r].f.plays = ALLPHABITS;
-	}
 	// init stats
 	globalstats.evals = 0;
 	globalstats.evtime = 0;
@@ -521,12 +515,6 @@ cmplgl(letter_t l, letter_t g)
 	return (l - g);
 }
 
-inline
-int findl(char *s, char c)
-{
-	return (strchr(s,c) - s);
-}
-
 /* return the next letter, and fix up bs */
 inline letter_t
 nextl(bs_t *bs, int *curid)
@@ -540,41 +528,6 @@ nextl(bs_t *bs, int *curid)
 	clrbit(*bs, l-1);
 	return l;
 }
-
-/*
- * bsi: bitset iterator. Does what mi does with bitsets.
- * IN: sorted array of letters. May contain MARK, SEP and blanks.
- * IN: nodeid.
- * IN/OUT: index of letter to be used
- * IN/OUT: current node id
- * OUT: continue or end of matches value (0=no more matches, 1=continue)
- * Initial call: strndx=0 and curid=-1.
- */
-int
-bsi(letter_t *s, int nodeid, int *i, int *curid)
-{
-	bs_t rbs;
-	bs_t idbs;
-	bs_t cbs;
-	gn_t curnode;
-	letter_t l;
-
-	rbs = lstr2bs(s);
-	idbs = bitset[*curid];
-	cbs = rbs & idbs;
-
-/* damm blanks. */	
-
-	if (cbs != 0) {
-		l = ffb(cbs);
-		*i = findl(s, l);
-		*curid = popc(idbs<<(32-l));
-	} else {
-	}
-
-}
-
-
 
 /*
  * match iterator: non-recursive iteration function for letters against
@@ -675,72 +628,6 @@ DBG(DBG_ANA, "Pop %c at %d back to ", l2c(sofar[depth]), depth) {
 	return anas;
 }
 
-/* try again, and this time THINK! */
-int
-doanagram_c(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
-{
-	int i;
-	letter_t wordl;
-	int bl;
-	int tst;
-	int curid;
-	gn_t curnode;
-	letter_t nodel;
-	int anas = 0;
-	char *printstr;
-
-	curid = nodeid;
-
-	DBG(DBG_ANA, "doing anagram (%d)node %u=0x%x (ls=%d, rs=%d)\n", depth, nodeid, gaddag[nodeid],strlen(sofar), strlen(rest)) {
-		printnode("in doanagram", nodeid);
-	}
-
-	for (i = 0; rest[i] != '\0'; i++) {
-		wordl = rest[i];
-		if (wordl == MARK) continue;
-		bl = is_ublank(wordl);
-		if (!bl && (wordl == rest[i+1])) continue;
-		if (bl) curid = nodeid;
-		do {
-			curnode = gaddag[curid];
-			nodel = gl(curnode);
-			tst = cmplgl(wordl,nodel);
-DBG(DBG_ANA, "looking for a match with %c(%hhx) or %c(%hhx) diff is %d\n", l2c(wordl), wordl, l2c(nodel), nodel, tst);
-			if (tst == 0) {
-				/* push */
-				if (bl) {
-					sofar[depth] = blankgl(nodel);
-				} else {
-					sofar[depth] = wordl;
-				}
-				rest[i] = MARK;
-DBG(DBG_ANA, "push %c(%d) from rest[%d] to sofar[%d]\n", l2c(sofar[depth]), sofar[depth], i, depth);
-				if (gf(curnode)) {
-					/* print it */
-					anas++;
-					printstr = strdup(sofar);
-					l2crstr(sofar, printstr);
-					vprintf(VNORM, "%s\n", printstr);
-					free(printstr);
-				}
-				/* anas += recurse */
-				anas += doanagram_c(gc(curnode), sofar, depth+1, rest);
-				/* pop */
-				rest[i] = wordl;
-				sofar[depth] = '\0';
-DBG(DBG_ANA, "Pop %c(%d) from sofar[%d] to rest[%d]\n", l2c(rest[i]), rest[i], depth,i);
-			}
-			if ((tst >= 0) && !gs(curnode)) {
-				curid++;
-DBG(DBG_ANA, "advance node to %d\n", curid);
-			} else {
-				break;
-			}
-		} while (tst >= 0);
-	}
-	return anas;
-}
-
 /* show all words in dictionary that can be made with these letters. */
 int
 anagramstr(letter_t *letters, int doscore)
@@ -811,11 +698,11 @@ updatemls(board_t *b, int dir, int mr, int mc, int val)
 	int r, c;
 	int under;
 
+	dr = 1 - dir;
+	dc = dir;
 	if (dir == M_HORIZ) {
-		dr = 1;
 		under = b->spaces[mr][mc].f.hmls;
 	} else {
-		dc = 1;
 		under = b->spaces[mr][mc].f.vmls;
 	}
 DBG(DBG_MLS, "update %cmls vals for (%d,%d) with %d+%d\n", dc? 'h':'v', mr, mc, val, under);
