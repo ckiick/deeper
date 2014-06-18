@@ -35,9 +35,7 @@
 #include <stdint.h>
 #endif	/* sun */
 
-
 #include "deeper.h"
-
 
 /* inline optimized code. Use -O4 or so to get really good perf */
 #ifdef _popc
@@ -453,10 +451,6 @@ initstuff()
 	}
 	/* mark all legal start moves */
 	startboard = emptyboard; 	// does this still work? YES.
-	for (r = 1; r <= STARTC; r++) {
-		/* there are only 7 unique legal starting positions. */
-		startboard.spaces[STARTR][r].f.plays = ALLPHABITS;
-	}
 	// init stats
 	globalstats.evals = 0;
 	globalstats.evtime = 0;
@@ -522,12 +516,6 @@ cmplgl(letter_t l, letter_t g)
 	return (l - g);
 }
 
-inline
-int findl(char *s, char c)
-{
-	return (strchr(s,c) - s);
-}
-
 /* return the next letter, and fix up bs */
 inline letter_t
 nextl(bs_t *bs, int *curid)
@@ -537,45 +525,10 @@ nextl(bs_t *bs, int *curid)
 
 	l = ffb(*bs);
 	if (l==0) return 0;
-	*curid += popc(idbs<<(32-l));
+	*curid += popc(idbs<<(32-l))-1;
 	clrbit(*bs, l-1);
 	return l;
 }
-
-/*
- * bsi: bitset iterator. Does what mi does with bitsets.
- * IN: sorted array of letters. May contain MARK, SEP and blanks.
- * IN: nodeid.
- * IN/OUT: index of letter to be used
- * IN/OUT: current node id
- * OUT: continue or end of matches value (0=no more matches, 1=continue)
- * Initial call: strndx=0 and curid=-1.
- */
-int
-bsi(letter_t *s, int nodeid, int *i, int *curid)
-{
-	bs_t rbs;
-	bs_t idbs;
-	bs_t cbs;
-	gn_t curnode;
-	letter_t l;
-
-	rbs = lstr2bs(s);
-	idbs = bitset[*curid];
-	cbs = rbs & idbs;
-
-/* damm blanks. */	
-
-	if (cbs != 0) {
-		l = ffb(cbs);
-		*i = findl(s, l);
-		*curid = popc(idbs<<(32-l));
-	} else {
-	}
-
-}
-
-
 
 /*
  * match iterator: non-recursive iteration function for letters against
@@ -676,72 +629,6 @@ DBG(DBG_ANA, "Pop %c at %d back to ", l2c(sofar[depth]), depth) {
 	return anas;
 }
 
-/* try again, and this time THINK! */
-int
-doanagram_c(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
-{
-	int i;
-	letter_t wordl;
-	int bl;
-	int tst;
-	int curid;
-	gn_t curnode;
-	letter_t nodel;
-	int anas = 0;
-	char *printstr;
-
-	curid = nodeid;
-
-	DBG(DBG_ANA, "doing anagram (%d)node %u=0x%x (ls=%d, rs=%d)\n", depth, nodeid, gaddag[nodeid],strlen(sofar), strlen(rest)) {
-		printnode("in doanagram", nodeid);
-	}
-
-	for (i = 0; rest[i] != '\0'; i++) {
-		wordl = rest[i];
-		if (wordl == MARK) continue;
-		bl = is_ublank(wordl);
-		if (!bl && (wordl == rest[i+1])) continue;
-		if (bl) curid = nodeid;
-		do {
-			curnode = gaddag[curid];
-			nodel = gl(curnode);
-			tst = cmplgl(wordl,nodel);
-DBG(DBG_ANA, "looking for a match with %c(%hhx) or %c(%hhx) diff is %d\n", l2c(wordl), wordl, l2c(nodel), nodel, tst);
-			if (tst == 0) {
-				/* push */
-				if (bl) {
-					sofar[depth] = blankgl(nodel);
-				} else {
-					sofar[depth] = wordl;
-				}
-				rest[i] = MARK;
-DBG(DBG_ANA, "push %c(%d) from rest[%d] to sofar[%d]\n", l2c(sofar[depth]), sofar[depth], i, depth);
-				if (gf(curnode)) {
-					/* print it */
-					anas++;
-					printstr = strdup(sofar);
-					l2crstr(sofar, printstr);
-					vprintf(VNORM, "%s\n", printstr);
-					free(printstr);
-				}
-				/* anas += recurse */
-				anas += doanagram_c(gc(curnode), sofar, depth+1, rest);
-				/* pop */
-				rest[i] = wordl;
-				sofar[depth] = '\0';
-DBG(DBG_ANA, "Pop %c(%d) from sofar[%d] to rest[%d]\n", l2c(rest[i]), rest[i], depth,i);
-			}
-			if ((tst >= 0) && !gs(curnode)) {
-				curid++;
-DBG(DBG_ANA, "advance node to %d\n", curid);
-			} else {
-				break;
-			}
-		} while (tst >= 0);
-	}
-	return anas;
-}
-
 /* show all words in dictionary that can be made with these letters. */
 int
 anagramstr(letter_t *letters, int doscore)
@@ -762,48 +649,6 @@ anagramstr(letter_t *letters, int doscore)
 		printlstr(lset); printf("\n");
 	}
 	return doanagram_d(0, sofar, 0, lset);
-}
-
-/* lookup using match iterator, non-recursive version. */
-/* apparently, it's very hard to do non-recurive with blanks. */
-/* clue: need to be able to "back up" ie i++.  I think that implies a stack.*/
-
-int
-mnr_lookup(int i, letter_t *word, uint32_t nodeid)
-{
-	letter_t wl;
-	letter_t slw[2];
-	int nextid = -1;
-	int j = 0;
-	int matchcount = 0;
-
-	if (i == 0) {
-DBG(DBG_LOOK, "Nothing to match\n");
-		return 0;
-	}
-
-while (i > 0) {
-	wl = word[--i];
-	slw[0] = wl;
-	slw[1] = '\0';
-
-DBG(DBG_LOOK, "i=%d, word[i]=%c, nid=%d\n", i, l2c(slw[1]), nodeid);
-	while (mi(slw, nodeid, &j, &nextid)) {
-		word[i] = slw[0];
-DBG(DBG_LOOK, "matched %c(%d) at %d\n", l2c(slw[j]), slw[j], nextid);
-		if ((i == 0) && gf(gaddag[nextid])) {
-			matchcount++;
-			VERB(VNORM, "") {
-				printlstr(word); printf("\n");
-			}
-		} else {
-			matchcount += m_lookup(i, word, gc(gaddag[nextid]));
-		}
-	}
-	word[i] = wl;
-}
-DBG(DBG_LOOK, "found %d matches\n", matchcount);
-	return matchcount;
 }
 
 /* lookup using match iterator.
@@ -845,67 +690,6 @@ DBG(DBG_LOOK, "found %d matches\n", matchcount);
 	return matchcount;
 }
 
-/* NEWGADDAG
- * need to re-re-write lookup.
- * When called, look for the next letter in our sibgroup.
- * if found, last letter AND final, count it (print it)
- * returns number of words matched.
- * NOTE: root is not weird. NOTE: still backwards.
- */
-int
-r_lookup(int i, letter_t *word, uint32_t nodeid)
-{
-	gn_t curnode;
-	letter_t wordl;
-	letter_t nodel;
-	int matchcount = 0;
-	int tst;
-
-	if (i == 0) {
-DBG(DBG_LOOK, "Nothing to match\n");
-		return 0;
-	}
-
-	wordl = word[--i];
-DBG(DBG_LOOK, "word[%d]=%c(%d), nid=%u n=%x", i, l2c(wordl), wordl, nodeid, curnode) {
-	char *str = strdup(word);
-	l2cstr(word, str);
-	printf(" word=%s\n", str);
-}
-
-	do {
-		curnode = gaddag[nodeid];
-		nodel = gl(curnode);
-		tst = cmplgl(wordl, nodel);
-		if (tst == 0) {
-DBG(DBG_LOOK, "matched %c(%d) with %c(%d) at %d\n", l2c(wordl), wordl, l2c(nodel), nodel, nodeid);
-			if (is_ublank(wordl)) {
-				word[i] = blankgl(nodel);
-			}
-			if (i == 0) {
-				if (gf(curnode)) {
-					matchcount++;
-					VERB(VNORM, "") {
-						printlstr(word); printf("\n");
-					}
-				}
-			} else {
-				matchcount += r_lookup(i, word, gc(curnode));
-			}
-			if (is_ublank(wordl)) {
-				word[i] = wordl;
-			}
-		}
-		if ((tst >= 0) && !gs(curnode)) {
-			nodeid++;
-		} else {
-			break;
-		}
-	} while (tst >= 0);
-
-DBG(DBG_LOOK, "found %d matches\n", matchcount);
-	return matchcount;
-}
 
 /* update values of empty spaces with new cross letter move scores. */
 void
@@ -915,11 +699,11 @@ updatemls(board_t *b, int dir, int mr, int mc, int val)
 	int r, c;
 	int under;
 
+	dr = 1 - dir;
+	dc = dir;
 	if (dir == M_HORIZ) {
-		dr = 1;
 		under = b->spaces[mr][mc].f.hmls;
 	} else {
-		dc = 1;
 		under = b->spaces[mr][mc].f.vmls;
 	}
 DBG(DBG_MLS, "update %cmls vals for (%d,%d) with %d+%d\n", dc? 'h':'v', mr, mc, val, under);
@@ -1277,21 +1061,6 @@ printmove(move_t *m, int rev)
 	printf("\n");
 }
 
-/* see if l is a sib of nodeid, and if so return which one. -1 if not found*/
-int
-findin(letter_t l, int nodeid)
-{
-	gn_t node;
-
-	do {
-		node = gaddag[nodeid];
-		if (gl(node) == l) return nodeid;
-		if (gs(node)) break;
-		nodeid++;
-	} while (1);
-	return -1;
-}
-
 /* more utility small funcs */
 
 /* no letter directly horizontal. */
@@ -1398,7 +1167,7 @@ DBG(DBG_GOON, "Pop %c at %d back to\n", l2c(w[ndx]), ndx);
 				w[ndx] = '\0';
 				break;
 			} else {
-				pl = ffb(bs);
+				pl = nextl(&bs, &curid);
 				ASSERT(pl != 0);
 DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 	printlstr(r->tiles); printf("\n");
@@ -1407,10 +1176,8 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				else rlp = strchr(r->tiles, pl);
 				ASSERT(rlp != NULL);
 				*rlp = MARK;
-				curid += popc(bitset[curid] << (32 - pl)) -1;
 				pl |= bl;
 				w[ndx] = pl;
-				clrbit(bs, (int)pl-1);
 				sct.ts = lval(pl);
 				sct.tbs = b->spaces[ar][curcol].f.lm * sct.ts;
 				sct.wm =  b->spaces[ar][curcol].f.wm;
@@ -1448,10 +1215,9 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 		}
 		/* have to handle the ^ */
 		if (pos <= 0) {
-			if (SEPBIT & bitset[cid]);
-			sepid = findin(SEP, cid);
+			if ((SEPBIT & bitset[cid]) && nldl(b, ar, curcol) && (curcol < 14)) {
+				sepid = cid + popc(bitset[cid] << (32 - SEP))-1;
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
-			if ((sepid != -1) && nldl(b, ar, curcol) && (curcol < 14)) {
 				cid = gc(gaddag[sepid]);
 DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d", ar, m->col, cid) {
 	printf(" - word=\""); printlstr(w);
@@ -1465,213 +1231,6 @@ DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d", ar, m->col, cid) {
 
 	DBG(DBG_GOON, "made %d moves at level %d\n", movecnt, ndx);
 	return movecnt;
-}
-
-/* rne: rack not empty. */
-int inline
-rne(rack_t *r)
-{
-	int i;
-	for (i = 0; r->tiles[i] != '\0'; i++)
-	{
-		if (r->tiles[i] != MARK)
-			return 1;
-	}
-	return 0;
-}
-
-#ifdef EXPERIMENT
-int
-Gi2(board_t *b, move_t *m, int pos, rack_t *r, int nodeid, int *curid, letter_t *L, int *i, bs_t *bs)
-{
-	letter_t ml;
-	bs_t rbs = lstr2bs(r->tiles);
-
-	if (r->tiles[*i] == '\0') return 0;
-	bl = is_pblank(r->tiles[*i]);
-	if (*curid == - 1) {
-		*bs = rbs;
-		*curid = nodeid;
-	} else {
-		r->tiles[*i] = *L;
-	}
-	ml = ibs(bs, &curid);
-	if (ml) {
-		if (bl) *L = blankgl(ml);
-		else *L = ml;
-	} else {
-		if ((!is_pblank(r->tiles[*i])) && (rbs & UBLBIT))
-		{
-			bs = ALLPHABITS;
-			*curid = nodeid;
-			ml = ibs(bs, &curid);
-		} else {
-			*i = strlen(r->tiles);
-			return 0;
-		}
-	}
-	*i = findl(r->tiles, ml);
-	r->tiles[*i] = MARK;
-	return 1;
-}
-		bs_t bs;
-		if (*curid >= 0) {
-DBG(DBG_GEN, "(%d)Push %c back on rack\n", *i, l2c(*L));
-			r->tiles[*i] = *L;
-		} else {
-			if (!rne(r)) return 0;
-		}
-		while (mi(r->tiles, nodeid, i, curid)) {
-			*L = r->tiles[*i];
-			r->tiles[*i] = MARK;
-DBG(DBG_GEN, "matched %c i=%d, node=%d\n", l2c(*L), *i, *curid);
-			return 1;
-		}
-	}
-}
-
-#endif
-
-#ifdef NOTYET
-/* with bitsets. should be simpler. maybe. */
-int
-bsi(board_t *b, int pos, rack_t *r, int nodeid, int *curid, bs_t *bs)
-{
-	int ac = m->col;
-	int ar = m->row;
-	letter_t L;
-
-
-DBG(DBG_GEN, "at %d,%d(%-d) with bs %x in node %d",  ar,ac,pos, *bs, nodeid) {
-	printf(" ~word=\"");
-	printlstr(w);
-	printf("\", rack=\"");
-	printlstr(r->tiles);
-	printf("\"\n");
-}
-	L = b->spaces[ar][ac+pos].f.letter;
-	if (L) {
-		if (*curid >= 0) return 0;
-DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(L), ar, ac,);
-		*bs = l2b(deblank(L));
-		*bs |= bitset[nodeid];
-		*curid = nodeid;
-	} else {
-		if (*curid == -1) {
-			*curid = nodeid;
-			*bs = rbs & bitset[*curid];
-		}
-		if (*bs == UBLBIT) {
-			*curid = nodeid;
-			*bs = ALLPHABITS & bitset[*curid];
-		}
-	}
-	if (*bs == 0) {
-		return 0;
-	}
-	*L = nextl(*bs, &curid);
-	bitclr(*bs, *L);
-	return *L;
-
-#ifdef BOOHOO
-
-		if (*bs == -1) {
-		}
-		if (*bs <= 0) {
-			*curid = nodeid;
-		}
-		bs_t rbs = lstr2bs(r->tiles);
-		if (*curid < 0) {
-			*curid = nodeid;
-		}
-		if (*bs == UBLBIT) {
-			*bs = ALLPHABITS;
-		} else {
-			*bs = rbs;
-		}
-		*bs &= bitset[*curid];
-		*L = nextl(*bs, &curid);
-		return 1;
-	}
-	return 0;
-
-		if (*curid >= 0) {
-DBG(DBG_GEN, "(%d)Push %c back on rack\n", *i, l2c(*L));
-			r->tiles[*i] = *L;
-		} else {
-			if (!rne(r)) return 0;
-		}
-		while (mi(r->tiles, nodeid, i, curid)) {
-			*L = r->tiles[*i];
-			r->tiles[*i] = MARK;
-DBG(DBG_GEN, "matched %c i=%d, node=%d\n", l2c(*L), *i, *curid);
-			return 1;
-		}
-	}
-	*L = '\0';
-	return 0;
-#endif
-}
-#endif
-
-/* turn Gen into an itertator, just like mi. */
-/* IN: b - board
- * IN/OUT: m - move
- * IN: pos - offset from anchor
- * IN/OUT: r - rack
- * IN: nodeid - starting nodeid
- * IN/OUT: curid - internal state
- * IN/OUT: i - internal state for match iterator
- * IN/OUT: L - letter matched, \0 if no match found.
- * returns: 1 if letter (L) is found, 0 if all out.
- * i, curid and L must be preserved between calls.
- * initial call: Gi(b, m, pos, r, nodeid, &i(0), &curid(-1), &L(any))
- */
-int
-Gi(board_t *b, move_t *m, int pos, rack_t *r, int nodeid, int *i, int *curid, letter_t *L)
-{
-	int lid;
-	int ac = m->col;
-	int ar = m->row;
-	letter_t *w = m->tiles;
-	letter_t BL;
-
-DBG(DBG_GEN, "at %d,%d(%-d) with in node %d",  ar,ac,pos, nodeid) {
-	printf(" ~word=\"");
-	printlstr(w);
-	printf("\", rack=\"");
-	printlstr(r->tiles);
-	printf("\"\n");
-}
-	BL = b->spaces[ar][ac+pos].f.letter;
-	if (BL) {
-DBG(DBG_GEN, "found %c on board at %d, %d, i=%d\n", l2c(BL), ar, ac, *i);
-		if ((*i)++ > 0) return 0;
-		if (*curid < 0) {
-			*curid = nodeid;
-		}
-		*curid = findin(deblank(BL), *curid);
-		if (*curid != -1) {
-			*L = BL;
-DBG(DBG_GEN, "found match %c node=%d\n", l2c(BL), *curid);
-			return 1;
-		}
-	} else {
-		if (*curid >= 0) {
-DBG(DBG_GEN, "(%d)Push %c back on rack\n", *i, l2c(*L));
-			r->tiles[*i] = *L;
-		} else {
-			if (!rne(r)) return 0;
-		}
-		while (mi(r->tiles, nodeid, i, curid)) {
-			*L = r->tiles[*i];
-			r->tiles[*i] = MARK;
-DBG(DBG_GEN, "matched %c i=%d, node=%d\n", l2c(*L), *i, *curid);
-			return 1;
-		}
-	}
-	*L = '\0';
-	return 0;
 }
 
 /* do this later... */
