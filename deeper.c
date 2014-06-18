@@ -107,7 +107,7 @@ int globaldone = 0;		// set to stop all threads.
 void
 usage(char *me)
 {
-	VERB(VNORM, "usage: %s [-DALSMvqs][-d dict][-b bag][-B letters][-o name] moves...", me) {
+	VERB(VNORM, "usage: %s [-DALSMvqs][-d dict][-b bag][-B letters][-R letters][-o name] moves...", me) {
 		printf(
 	"\t-L: lookup args in dictionary\n"
 	"\t-A: print all anagrams of args\n"
@@ -124,9 +124,9 @@ usage(char *me)
 	"\t-o name: save best move to name.gcg\n"
 	"\t-s: collect and report statistics. Use twice for more.\n"
 	"\t args = rc:word or cr:word, r=1-15, c=A-O, word is 1-7 letters.\n"
-	"\t        If rc is omitted, uses starting position of 7H.\n"
-	"\t        Put row first for horizontal moves. Do not include tiles\n"
-	"\t        Already on board. Use lowercase letter for blank played.\n"
+	"\t        If rc is omitted, uses starting position of 8H.\n"
+	"\t        Put row (number) first for horizontal moves. Use lowercase\n"
+	"\t	   letter for blank played.\n"
 		);
 	}
 }
@@ -794,10 +794,60 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 }
 
 /*
+ * makemove: place move m on board b. If playthrough then match
+ * tiles in move to those already on board.  Calculates mls along the
+ * way, but does not do scoring.  Returns number of letters placed,
+ * 0 if null move, or < 0 if error.
+ */
+int
+makemove(board_t *b, move_t *m, int playthrough)
+{
+	int cr, cc, dr, dc, ts, i, tts;
+	space_t *sp;
+
+	dc = 1 - m->dir;
+	dr = m->dir;
+	cr = m->row;
+	cc = m->col;
+	tts = 0;
+
+	if (strlen(m->tiles) == 0) {
+		return 0;
+	}
+	for (i=0; m->tiles[i] != '\0'; cr+=dr,cc+=dc) {
+		ASSERT(((cr>=0)&&(cr<BOARDY)) && ((cc>=0)&&(cc<BOARDX)))
+		sp = &(b->spaces[cr][cc]);
+		if (sp->f.letter != '\0') {
+// no...		tts += lval[sp->f.letter];
+			if (playthrough) {
+				if (m->tiles[i] != sp->f.letter) {
+vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->f.letter), sp->f.letter);
+				}
+				i++;
+			}
+		} else {
+			ts = lval(m->tiles[i]);
+			tts += ts;
+			updatemls(b, m->dir, cr, cc, ts);
+			i++;
+		}
+	}
+	/* handle non-playthrough prefix plays */
+	if (!playthrough) {
+		while ((cr<BOARDY) && (cc<BOARDX) && (sp->f.letter != '\0')) {
+			tts += lval(sp->f.letter);
+			cr+=dr;cc+=dc;
+		}
+	}
+	/* do "before" end */
+}
+
+/*
  * return the value of placing move m on board b.   If doit is set,
  * actually place the tiles, otherise we are just looking.
  * playthrough is for moves that include tiles already on board.
  */
+/* I believe this routine misses some cases. */
 int
 score(move_t *m, board_t *b, int doit, int playthrough)
 {

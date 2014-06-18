@@ -11,7 +11,7 @@ clobber:	clean
 	rm -rf ENABLE.* input
 
 deeper:	deeper.c deeper.h
-	gcc -o deeper deeper.c -lrt
+	gcc -O4 -o deeper deeper.c -lrt
 
 debug:	deeper.c deeper.h
 	gcc -g -DDEBUG -o deeper deeper.c -lrt
