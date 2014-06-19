@@ -876,9 +876,9 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 		}
 	}
 	/* do "after" end, if there's a space */
+	sp = &(b->spaces[cr][cc]);
 	if (m->dir == M_HORIZ) {
-		sp = &(b->spaces[cr][cc]);
-		if (cc<MAXC) {
+		if (cc<=MAXC) {
 			ASSERT(sp->f.letter == '\0');
 			/* stash sum under last letter */
 			b->spaces[cr][cc-1].f.vmls = tts;
@@ -890,15 +890,15 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			}
 		}
 	} else {
-		if (cr<MAXR) {
+		if (cr<=MAXR) {
 			ASSERT(sp->f.letter == '\0');
 			/* stash sum under last letter */
-			b->spaces[cr-1][cc].f.vmls = tts;
+			b->spaces[cr-1][cc].f.hmls = tts;
 			if (!nlda(b, cr, cc)) {
 				/* it's a bridge space */
-				sp->f.vmls = tts + b->spaces[cr+1][cc].f.vmls;
+				sp->f.hmls = tts + b->spaces[cr+1][cc].f.hmls;
 			} else {
-				sp->f.vmls = tts;
+				sp->f.hmls = tts;
 			}
 		}
 	}
@@ -1727,6 +1727,7 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 		}
 		if (action & (ACT_SCORE|ACT_MOVE)) {
 //			sc = score(&argmove, &sb, action&ACT_MOVE, action&ACT_PLAYTHRU);
+			sc = score(&argmove, &sb, 0, action&ACT_PLAYTHRU);
 			vprintf(VNORM, "%s scores %d\n", argv[optind], sc);
 			if (action&ACT_MOVE) {
 makemove(&sb, &argmove, 1);
