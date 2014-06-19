@@ -537,6 +537,16 @@ cmplgl(letter_t l, letter_t g)
 	return (l - g);
 }
 
+/* given a letter, find corresponding nodeid in nid.
+ * we can assume that the bit for l is set.
+ * NOTE: can't optimize by assuming uint32_t << 32 == 0.  it's not.
+ */
+inline int
+gotol(letter_t l, int nid)
+{
+	return nid + popc(bitset[nid] << (32-l)) -1;
+}
+
 /* return the next letter, and fix up bs */
 inline letter_t
 nextl(bs_t *bs, int *curid)
@@ -572,6 +582,99 @@ finals(int nid)
 	}
 	return bs;
 }
+
+/* more utility small funcs */
+
+/* ultimate nld: nldn. No letter directly next to.
+ * dir is H or V, side is -1 or 1.
+ */
+inline int
+nldn(board_t *b, int r, int c, int dir, int side)
+{
+	r += dir * side;
+	c += (1 - dir) * side;
+
+	((r>=0)&&(r<=MAXR)) ((c>=0)&&(c<=MAXC))
+		(b->spaces[r][c].b.f.letter == 0)
+
+}
+
+/* no letter directly horizontal. */
+inline int
+nldh(board_t *b, int ar, int ac, int pos) {
+	if (pos <= 0)
+		return ((ac == 0) || (b->spaces[ar][ac-1].b.f.letter == 0));
+	else
+		return ((ac == 14) || (b->spaces[ar][ac+1].b.f.letter == 0));
+}
+
+/* no letter directly vertical . */
+inline int
+nldv(board_t *b, int ar, int ac, int pos) {
+	if (pos <= 0)
+		return ((ar == 0) || (b->spaces[ar-1][ac].b.f.letter == 0));
+	else
+		return ((ar == 14) || (b->spaces[ar+1][ac].b.f.letter == 0));
+}
+
+/* sun compiler wants all inline functions to have explicit prototypes */
+int nlda(board_t *, int, int);
+
+/* no letter directly above */
+inline int
+nlda(board_t *b, int ar, int ac) {
+	return ((ar == 0) || (b->spaces[ar-1][ac].b.f.letter == 0));
+}
+
+/* no letter directly below */
+inline int
+nldb(board_t *b, int ar, int ac) {
+	return ((ar == 0) || (b->spaces[ar+1][ac].b.f.letter == 0));
+}
+
+/* no letter directly left */
+inline int
+nldl(board_t *b, int ar, int ac) {
+	return ((ac == 0) || (b->spaces[ar][ac-1].b.f.letter == 0));
+}
+
+/* no letter directly right */
+inline int
+nldr(board_t *b, int ar, int ac) {
+	return ((ac == 14) || (b->spaces[ar][ac+1].b.f.letter == 0));
+}
+
+
+/* dobridge: in the case where the cross move set falls into a "gap"
+ * between played tiles, we have more work to do.  End is -1 for
+ * "before" and +1 for "after".  The row,col are the end of the word.
+ * We can assume that at least two more squares are past the end.
+ */
+void
+dobridge(board_t *b, int nid, int row, int col, int dir, int end)
+{
+	int cr, cc;
+	bs_t nbs, cbs, fbs = 0;
+	letter_t l;
+	int dc, dr;
+
+	dr = dir * end;
+	dc = (1 - dir) * end;
+
+	nbs = bitset[nid];
+	while ( (l = nextl(&nbs, &nid)) ) {
+		nid = gotol(l, nid);
+		nid = gc(gaddag[nid]);
+		do {
+			if (nldX  && final)  fbs |= l
+			if (!letter in nid) break;
+			row,col ++
+			traverse node for letter
+		} while (letter != 0)
+	}
+	sp.Xmbs = fbs;
+}
+
 
 /*
  * match iterator: non-recursive iteration function for letters against
@@ -639,6 +742,7 @@ DBG(DBG_MATCH, "inner loop, i=%d, cid=%d, reenter=%d tst=%d (%c - %c)\n", *i, *c
 }
 
 /* anagram using match iterator. */
+int
 doanagram_d(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
 {
 	int anas = 0;
@@ -819,6 +923,7 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 }
 
 /* like makemove, but works BACKWARDS along move. So we can traverse gaddag. */
+/* add node tracking. */
 int
 makemove2(board_t *b, move_t *m, int playthrough)
 {
@@ -830,6 +935,7 @@ makemove2(board_t *b, move_t *m, int playthrough)
 	er = m->row;
 	ec = m->col;
 	tts = 0;
+	int nid = 0;
 
 	i = strlen(m->tiles);
 	if (i == 0) {
@@ -856,12 +962,13 @@ makemove2(board_t *b, move_t *m, int playthrough)
 			}
 		}
 	}
-
-	for (; i >= 0; cr-=dr,cc-=dc) {
+	for (; ((cr >= m->row)&&(cc >= m->col)); cr-=dr,cc-=dc) {
 		ASSERT(((cr>=0)&&(cr<BOARDY)) && ((cc>=0)&&(cc<BOARDX)));
 		sp = &(b->spaces[cr][cc]);
 		if (sp->b.f.letter != '\0') {
 			tts += lval(sp->b.f.letter);
+			nid = gotol(sp->b.f.letter, nid);
+			nid = gc(gaddad[nid]);
 			if (playthrough) {
 				if (m->tiles[i] != sp->b.f.letter) {
 vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
@@ -871,12 +978,15 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 		} else {
 			ts = lval(m->tiles[i]);
 			tts += ts;
+			nid = gotol(m->tiles[i]);
+			nid = gc(gaddag[nid]);
 			updatemls(b, m->dir, cr, cc, ts);
 			sp->b.f.letter = m->tiles[i];
 			i--;
 		}
 	}
-
+	/* by now, nid should point to eow in gaddag */
+//	ASSERT(gf(gaddag[nid]));  save for later...
 	/* do "before" end, if there's a space */
 	if (m->dir == M_HORIZ) {
 		if (m->col > 0) {
@@ -886,9 +996,11 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			b->spaces[m->row][m->col].b.f.vmls = tts;
 			if (!nldl(b, m->row, m->col-1)) {
 				/* it's a bridge space */
+				dobridge(b, nid, m->row, m->col, m->dir, -1);
 				sp->b.f.vmls = tts + b->spaces[m->row][m->col-2].b.f.vmls;
 			} else {
 				sp->b.f.vmls = tts;
+				sp->vmbs = finals(nid);
 			}
 		}
 	} else {
@@ -899,9 +1011,11 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			b->spaces[m->row][m->col].b.f.hmls = tts;
 			if (!nlda(b, m->row-1, m->col)) {
 				/* it's a bridge space */
+				dobridge(b, nid, m->row, m->col, m->dir, -1);
 				sp->b.f.hmls = tts + b->spaces[m->row-2][m->col].b.f.hmls;
 			} else {
 				sp->b.f.hmls = tts;
+				sp->vmbs = finals(nid);
 			}
 		}
 	}
@@ -915,6 +1029,7 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			b->spaces[er][ec].b.f.vmls = tts;
 			if (!nldr(b, er, ec+1)) {
 				/* it's a bridge space */
+				dobridge(b, nid, er, ec, m->dir, +1);
 				sp->b.f.vmls = tts + b->spaces[er][ec+2].b.f.vmls;
 			} else {
 				sp->b.f.vmls = tts;
@@ -928,12 +1043,14 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			b->spaces[er][ec].b.f.hmls = tts;
 			if (!nldb(b, er+1, ec)) {
 				/* it's a bridge space */
+				dobridge(b, nid, er, ec, m->dir, +1);
 				sp->b.f.hmls = tts + b->spaces[er+2][ec].b.f.hmls;
 			} else {
 				sp->b.f.hmls = tts;
 			}
 		}
 	}
+	return 1;
 }
 
 /*
@@ -1051,7 +1168,9 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
  * actually place the tiles, otherise we are just looking.
  * playthrough is for moves that include tiles already on board.
  */
-/* I believe this routine misses some cases. */
+/* I believe this routine misses some cases.
+ * yup, it's broken.
+ */
 int
 score(move_t *m, board_t *b, int doit, int playthrough)
 {
@@ -1327,51 +1446,6 @@ printmove(move_t *m, int rev)
 	}
 	printf("\n");
 }
-
-/* more utility small funcs */
-
-/* no letter directly horizontal. */
-inline int
-nldh(board_t *b, int ar, int ac, int pos) {
-	if (pos <= 0)
-		return ((ac == 0) || (b->spaces[ar][ac-1].b.f.letter == 0));
-	else
-		return ((ac == 14) || (b->spaces[ar][ac+1].b.f.letter == 0));
-}
-
-/* no letter directly vertical . */
-inline int
-nldv(board_t *b, int ar, int ac, int pos) {
-	if (pos <= 0)
-		return ((ar == 0) || (b->spaces[ar-1][ac].b.f.letter == 0));
-	else
-		return ((ar == 14) || (b->spaces[ar+1][ac].b.f.letter == 0));
-}
-
-/* no letter directly above */
-inline int
-nlda(board_t *b, int ar, int ac) {
-	return ((ar == 0) || (b->spaces[ar-1][ac].b.f.letter == 0));
-}
-
-/* no letter directly below */
-inline int
-nldb(board_t *b, int ar, int ac) {
-	return ((ar == 0) || (b->spaces[ar+1][ac].b.f.letter == 0));
-}
-
-/* no letter directly left */
-inline int
-nldl(board_t *b, int ar, int ac) {
-	return ((ac == 0) || (b->spaces[ar][ac-1].b.f.letter == 0));
-}
-
-/* no letter directly right */
-inline int
-nldr(board_t *b, int ar, int ac) {
-	return ((ac == 14) || (b->spaces[ar][ac+1].b.f.letter == 0));
-}
-
 /* GoOn with inline Gen. Still recursive. */
 /* initial call with pos=0, nodeid=0, and m->tiles empty. */
 /* do vertical moves as well. */
@@ -1427,7 +1501,8 @@ DBG(DBG_GOON, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs, 
 DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 			w[ndx] = pl;
 			rlp = NULL;
-			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(w[ndx])))-1;
+			curid = gotol(deblank(w[ndx]), nodeid);
+//			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(w[ndx])))-1;
 			sct.ts = lval(pl);
 			sct.tbs = b->spaces[currow][curcol].b.f.lm * sct.ts;
 			sct.wm = b->spaces[currow][curcol].b.f.wm;
@@ -1532,7 +1607,8 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 				room = nlda(b, currow, curcol) && (currow < 14);
 			}
 			if (room) {
-				sepid = cid + popc(bitset[cid] << (32 - SEP))-1;
+				sepid = gotol(SEP, cid);
+//				sepid = cid + popc(bitset[cid] << (32 - SEP))-1;
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
 DBG(DBG_GOON, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
@@ -1907,5 +1983,5 @@ makemove2(&sb, &argmove, 1);
 		return anas;
 	}
 
-	return 0;	// fall-through catch-all.
+	//return 0;	// fall-through catch-all. not reached
 }

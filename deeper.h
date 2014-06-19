@@ -57,8 +57,8 @@ typedef uint64_t hrtime_t;
 #define DBG_NONE	0x80000000	// doesn't match anything
 
 /* revisit: wrap or otherwise mangle to avoid syntax error in stmts. */
-#define vprintf(lvl, fmt,...) \
-	if (verbose >= (lvl)) printf(fmt, ## __VA_ARGS__)
+#define vprintf(lvl, fmt, ...) \
+	if (verbose >= (lvl)) printf(fmt, ##__VA_ARGS__)
 
 #define VERB(lvl, fmt, ...)	\
         if (( verbose >= lvl) ? 1 + printf(fmt, ##__VA_ARGS__) : 0)
@@ -164,7 +164,8 @@ const uint8_t Vals[32] = {
 #define cval(c)	lval(c2l(c))
 
 /* letter is not char: indexed from 1, 6 bits, non A-Z can be special. */
-typedef uint8_t letter_t;	// because we don't have 5/6-bit ints.
+// typedef uint8_t letter_t;	// because we don't have 5/6-bit ints.
+typedef char letter_t;		// cc unsigned!=signed
 
 /* Rack */
 /*
