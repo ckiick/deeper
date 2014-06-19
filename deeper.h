@@ -209,19 +209,26 @@ const bagstr_t bags[26] = {
 	/* Z */ "ZQSELYRKALAFEBVFRUSHND?UE?REAAEITIGNALOURRAVGOTTXSOOYDMPOSAIEIIAEOIPRHEEETNTCBNMDUGDIJIOWLTCIEOENWNA"
 };
 
-/* Space - spaces are what a board is made of. */
+/* subspace is the bitfields part of a space. */
 /* make sure to assert packing and overlay of union. */
-typedef union Space {
+/* investigate if byte-alignments will help performance... */
+typedef union _subspace {
 	struct {
-		uint64_t pad:14;	// pad out to 64 bits.  Reserved.
-		uint64_t hmls:7;	// horiz mv letter score.
-		uint64_t vmls:7;	// horiz mv letter score.
-		uint64_t lm:2;		// letter multiplier (1, 2 or 3)
-		uint64_t wm:2;		// word mulitplier (1, 2, or 3)
-		uint64_t plays:26;	// bitmap of playable letters
-		uint64_t letter:6;	// what's played here. NULL, A-Z,a-z.
+		uint32_t pad:8;		// pad out to 64 bits.  Reserved.
+		uint32_t hmls:7;	// horiz mv letter score.
+		uint32_t vmls:7;	// horiz mv letter score.
+		uint32_t lm:2;		// letter multiplier (1, 2 or 3)
+		uint32_t wm:2;		// word mulitplier (1, 2, or 3)
+		uint32_t letter:6;	// what's played here. NULL, A-Z,a-z.
 	} f;
-	uint64_t all;
+	uint32_t all;
+} subspace_t;
+
+/* Space - spaces are what a board is made of. */
+typedef struct Space {
+	subspace_t b;
+	bs_t hmbs;
+	bs_t vmbs;
 } space_t;
 
 /* cvt letter to playable bit. */

@@ -449,21 +449,23 @@ initstuff()
 	/* set up empty board */
 	for (r = 0; r < BOARDY; r++) {
 		for (c = 0; c < BOARDX; c++) {
-			(emptyboard.spaces[r][c]).all = 0;
+			emptyboard.spaces[r][c].b.all = 0;
+			emptyboard.spaces[r][c].hmbs = 0;
+			emptyboard.spaces[r][c].vmbs = 0;
 			switch (boni[r][c]) {
 			case DL:
 			case TL:
-				emptyboard.spaces[r][c].f.lm = boni[r][c] + 1;
-				emptyboard.spaces[r][c].f.wm = 1;
+				emptyboard.spaces[r][c].b.f.lm = boni[r][c] + 1;
+				emptyboard.spaces[r][c].b.f.wm = 1;
 				break;
 			case DW:
 			case TW:
-				emptyboard.spaces[r][c].f.wm = boni[r][c] - 1;
-				emptyboard.spaces[r][c].f.lm = 1;
+				emptyboard.spaces[r][c].b.f.wm = boni[r][c] - 1;
+				emptyboard.spaces[r][c].b.f.lm = 1;
 				break;
 			default:
-				emptyboard.spaces[r][c].f.lm = 1;
-				emptyboard.spaces[r][c].f.wm = 1;
+				emptyboard.spaces[r][c].b.f.lm = 1;
+				emptyboard.spaces[r][c].b.f.wm = 1;
 			}
 		}
 	}
@@ -518,6 +520,7 @@ printnode(char *msg, uint32_t nid)
 gs(gaddag[nid])?'$': ' ', gf(gaddag[nid])? '.': ' ',l?l2c(l):' ',l );
 }
 
+
 /*
  * a compare function for a letter versus a gaddag-letter.
  * 0 = a match.
@@ -546,6 +549,28 @@ nextl(bs_t *bs, int *curid)
 	*curid += popc(idbs<<(32-l))-1;
 	clrbit(*bs, l-1);
 	return l;
+}
+
+/* 
+ * compute final bit set given node id.
+ */
+bs_t
+finals(int nid)
+{
+	bs_t bs = 0;
+	letter_t l;
+	bs_t nbs = bitset[nid];
+	int newid;
+
+	l = nextl(&nbs, &nid);
+
+	while (l != '\0') {
+		if (gf(gaddag[nid])) {
+			setbit(bs, l-1);
+		}
+		l = nextl(&nbs, &nid);
+	}
+	return bs;
 }
 
 /*
@@ -720,36 +745,36 @@ updatemls(board_t *b, int dir, int mr, int mc, int val)
 	dr = 1 - dir;
 	dc = dir;
 	if (dir == M_HORIZ) {
-		under = b->spaces[mr][mc].f.hmls;
+		under = b->spaces[mr][mc].b.f.hmls;
 	} else {
-		under = b->spaces[mr][mc].f.vmls;
+		under = b->spaces[mr][mc].b.f.vmls;
 	}
 DBG(DBG_MLS, "update %cmls vals for (%d,%d) with %d+%d\n", dc? 'h':'v', mr, mc, val, under);
 	val += under;
 	/* you have to have it both ways. */
 	r = mr + dr;
 	c = mc + dc;
-	while (b->spaces[r][c].f.letter  && ((r<BOARDY)&&(c<BOARDX))) {
+	while (b->spaces[r][c].b.f.letter  && ((r<BOARDY)&&(c<BOARDX))) {
 		r += dr; c += dc;
 	}
 	if ((r<BOARDY && c<BOARDX)) {
 		if (dir == M_HORIZ) {
-			b->spaces[r][c].f.hmls = val;
+			b->spaces[r][c].b.f.hmls = val;
 		} else {
-			b->spaces[r][c].f.vmls = val;
+			b->spaces[r][c].b.f.vmls = val;
 		}
 DBG(DBG_MLS, "%cmls set to %d at (%d,%d)\n", dc? 'h':'v', val, r, c);
 	}
 	r = mr - dr;
 	c = mc - dc;
-	while (b->spaces[r][c].f.letter && ((r>=0)&&(c>=0))) {
+	while (b->spaces[r][c].b.f.letter && ((r>=0)&&(c>=0))) {
 		r -= dr; c -= dc;
 	}
 	if ((r>=0)&&(c>=0)) {
 		if (dir == M_HORIZ) {
-			b->spaces[r][c].f.hmls = val;
+			b->spaces[r][c].b.f.hmls = val;
 		} else {
-			b->spaces[r][c].f.vmls = val;
+			b->spaces[r][c].b.f.vmls = val;
 		}
 DBG(DBG_MLS, "%cmls set to %d at (%d,%d)\n", dc? 'h':'v', val, r, c);
 	}
@@ -793,6 +818,124 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 	return fsc;
 }
 
+/* like makemove, but works BACKWARDS along move. So we can traverse gaddag. */
+int
+makemove2(board_t *b, move_t *m, int playthrough)
+{
+	int cr, cc, dr, dc, ts, i, tts, er, ec;
+	space_t *sp;
+
+	dc = 1 - m->dir;
+	dr = m->dir;
+	er = m->row;
+	ec = m->col;
+	tts = 0;
+
+	i = strlen(m->tiles);
+	if (i == 0) {
+		return 0;
+	}
+	i--;
+	if (m->dir == M_HORIZ) {
+		ec += i;
+	} else {
+		er += i;
+	}
+	cr = er;
+	cc = ec;
+
+	/* handle non-playthrough prefix plays */
+	if (!playthrough) {
+		while ((cr<BOARDY) && (cc<BOARDX)) {
+			sp = &(b->spaces[cr][cc]);
+			if (sp->b.f.letter != '\0') {
+				tts += lval(sp->b.f.letter);
+				cr+=dr;cc+=dc;
+			} else {
+				break;
+			}
+		}
+	}
+
+	for (; i >= 0; cr-=dr,cc-=dc) {
+		ASSERT(((cr>=0)&&(cr<BOARDY)) && ((cc>=0)&&(cc<BOARDX)));
+		sp = &(b->spaces[cr][cc]);
+		if (sp->b.f.letter != '\0') {
+			tts += lval(sp->b.f.letter);
+			if (playthrough) {
+				if (m->tiles[i] != sp->b.f.letter) {
+vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+				}
+				i--;
+			}
+		} else {
+			ts = lval(m->tiles[i]);
+			tts += ts;
+			updatemls(b, m->dir, cr, cc, ts);
+			sp->b.f.letter = m->tiles[i];
+			i--;
+		}
+	}
+
+	/* do "before" end, if there's a space */
+	if (m->dir == M_HORIZ) {
+		if (m->col > 0) {
+			sp = &(b->spaces[m->row][m->col-1]);
+			ASSERT(sp->b.f.letter == '\0');
+			/* stash sum under first letter */
+			b->spaces[m->row][m->col].b.f.vmls = tts;
+			if (!nldl(b, m->row, m->col-1)) {
+				/* it's a bridge space */
+				sp->b.f.vmls = tts + b->spaces[m->row][m->col-2].b.f.vmls;
+			} else {
+				sp->b.f.vmls = tts;
+			}
+		}
+	} else {
+		if (m->row > 0) {
+			sp = &(b->spaces[m->row-1][m->col]);
+			ASSERT(sp->b.f.letter == '\0');
+			/* stash sum under first letter */
+			b->spaces[m->row][m->col].b.f.hmls = tts;
+			if (!nlda(b, m->row-1, m->col)) {
+				/* it's a bridge space */
+				sp->b.f.hmls = tts + b->spaces[m->row-2][m->col].b.f.hmls;
+			} else {
+				sp->b.f.hmls = tts;
+			}
+		}
+	}
+
+	/* do "after" end, if there's a space */
+	if (m->dir == M_HORIZ) {
+		if (ec<MAXC) {
+			sp = &(b->spaces[er][ec+1]);
+			ASSERT(sp->b.f.letter == '\0');
+			/* stash sum under last letter */
+			b->spaces[er][ec].b.f.vmls = tts;
+			if (!nldr(b, er, ec+1)) {
+				/* it's a bridge space */
+				sp->b.f.vmls = tts + b->spaces[er][ec+2].b.f.vmls;
+			} else {
+				sp->b.f.vmls = tts;
+			}
+		}
+	} else {
+		if (er<=MAXR) {
+			sp = &(b->spaces[er+1][ec]);
+			ASSERT(sp->b.f.letter == '\0');
+			/* stash sum under last letter */
+			b->spaces[er][ec].b.f.hmls = tts;
+			if (!nldb(b, er+1, ec)) {
+				/* it's a bridge space */
+				sp->b.f.hmls = tts + b->spaces[er+2][ec].b.f.hmls;
+			} else {
+				sp->b.f.hmls = tts;
+			}
+		}
+	}
+}
+
 /*
  * makemove: place move m on board b. If playthrough then match
  * tiles in move to those already on board.  Calculates mls along the
@@ -815,15 +958,14 @@ makemove(board_t *b, move_t *m, int playthrough)
 		return 0;
 	}
 	/* make sure we are really at the start */
-//	ASSERT( ?  );
 	for (i=0; m->tiles[i] != '\0'; cr+=dr,cc+=dc) {
 		ASSERT(((cr>=0)&&(cr<BOARDY)) && ((cc>=0)&&(cc<BOARDX)));
 		sp = &(b->spaces[cr][cc]);
-		if (sp->f.letter != '\0') {
-			tts += lval(sp->f.letter);
+		if (sp->b.f.letter != '\0') {
+			tts += lval(sp->b.f.letter);
 			if (playthrough) {
-				if (m->tiles[i] != sp->f.letter) {
-vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->f.letter), sp->f.letter);
+				if (m->tiles[i] != sp->b.f.letter) {
+vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
 				}
 				i++;
 			}
@@ -831,7 +973,7 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 			ts = lval(m->tiles[i]);
 			tts += ts;
 			updatemls(b, m->dir, cr, cc, ts);
-			sp->f.letter = m->tiles[i];
+			sp->b.f.letter = m->tiles[i];
 			i++;
 		}
 	}
@@ -839,8 +981,8 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 	if (!playthrough) {
 		while ((cr<BOARDY) && (cc<BOARDX)) {
 			sp = &(b->spaces[cr][cc]);
-			if (sp->f.letter != '\0') {
-				tts += lval(sp->f.letter);
+			if (sp->b.f.letter != '\0') {
+				tts += lval(sp->b.f.letter);
 				cr+=dr;cc+=dc;
 			} else {
 				break;
@@ -851,27 +993,27 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 	if (m->dir == M_HORIZ) {
 		if (m->col > 0) {
 			sp = &(b->spaces[m->row][m->col-1]);
-			ASSERT(sp->f.letter == '\0');
+			ASSERT(sp->b.f.letter == '\0');
 			/* stash sum under first letter */
-			b->spaces[m->row][m->col].f.vmls = tts;
+			b->spaces[m->row][m->col].b.f.vmls = tts;
 			if (!nldl(b, m->row, m->col-1)) {
 				/* it's a bridge space */
-				sp->f.vmls = tts + b->spaces[m->row][m->col-2].f.vmls;
+				sp->b.f.vmls = tts + b->spaces[m->row][m->col-2].b.f.vmls;
 			} else {
-				sp->f.vmls = tts;
+				sp->b.f.vmls = tts;
 			}
 		}
 	} else {
 		if (m->row > 0) {
 			sp = &(b->spaces[m->row-1][m->col]);
-			ASSERT(sp->f.letter == '\0');
+			ASSERT(sp->b.f.letter == '\0');
 			/* stash sum under first letter */
-			b->spaces[m->row][m->col].f.hmls = tts;
+			b->spaces[m->row][m->col].b.f.hmls = tts;
 			if (!nldb(b, m->row-1, m->col)) {
 				/* it's a bridge space */
-				sp->f.hmls = tts + b->spaces[m->row-2][m->col].f.hmls;
+				sp->b.f.hmls = tts + b->spaces[m->row-2][m->col].b.f.hmls;
 			} else {
-				sp->f.hmls = tts;
+				sp->b.f.hmls = tts;
 			}
 		}
 	}
@@ -879,26 +1021,26 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 	sp = &(b->spaces[cr][cc]);
 	if (m->dir == M_HORIZ) {
 		if (cc<=MAXC) {
-			ASSERT(sp->f.letter == '\0');
+			ASSERT(sp->b.f.letter == '\0');
 			/* stash sum under last letter */
-			b->spaces[cr][cc-1].f.vmls = tts;
+			b->spaces[cr][cc-1].b.f.vmls = tts;
 			if (!nldr(b, cr, cc)) {
 				/* it's a bridge space */
-				sp->f.vmls = tts + b->spaces[cr][cc+1].f.vmls;
+				sp->b.f.vmls = tts + b->spaces[cr][cc+1].b.f.vmls;
 			} else {
-				sp->f.vmls = tts;
+				sp->b.f.vmls = tts;
 			}
 		}
 	} else {
 		if (cr<=MAXR) {
-			ASSERT(sp->f.letter == '\0');
+			ASSERT(sp->b.f.letter == '\0');
 			/* stash sum under last letter */
-			b->spaces[cr-1][cc].f.hmls = tts;
+			b->spaces[cr-1][cc].b.f.hmls = tts;
 			if (!nlda(b, cr, cc)) {
 				/* it's a bridge space */
-				sp->f.hmls = tts + b->spaces[cr+1][cc].f.hmls;
+				sp->b.f.hmls = tts + b->spaces[cr+1][cc].b.f.hmls;
 			} else {
-				sp->f.hmls = tts;
+				sp->b.f.hmls = tts;
 			}
 		}
 	}
@@ -933,10 +1075,10 @@ DBG(DBG_SCORE,"in score with (%d,%d)->%s %d letters\n", m->row, m->col,  m->dir 
 	deltah = m->dir;
 	ortho = 1 - m->dir;
 	if (m->dir == M_HORIZ) {
-		ends = b->spaces[m->row][m->col].f.vmls;
+		ends = b->spaces[m->row][m->col].b.f.vmls;
 DBG(DBG_SCORE, "get H beginning end score %d at (%d, %d)\n", ends, m->row, m->col);
 	} else {
-		ends = b->spaces[m->row][m->col].f.hmls;
+		ends = b->spaces[m->row][m->col].b.f.hmls;
 DBG(DBG_SCORE, "get V beginning end score %d at (%d, %d)\n", ends, m->row, m->col);
 	};
 DBG(DBG_SCORE, "moving %d so deltah=%d and deltav=%d\n", m->dir, deltah, deltav);
@@ -945,48 +1087,48 @@ DBG(DBG_SCORE, "moving %d so deltah=%d and deltav=%d\n", m->dir, deltah, deltav)
 
 	for (i=0, r=m->row, c=m->col; i < m->lcount; r += deltah, c += deltav) {
 		sp = &(b->spaces[r][c]);
-		if (sp->f.letter == EMPTY) {
+		if (sp->b.f.letter == EMPTY) {
 DBG(DBG_SCORE, "placing %dth out of %d %c(%d) at (%d,%d)\n", i, m->lcount, l2c(m->tiles[i]), m->tiles[i], r, c);
-DBG(DBG_SCORE, "on space (%d,%d) lm=%d wm=%d\n",r,c, sp->f.lm, sp->f.wm);
-			mult *= sp->f.wm;	// word multiplier
+DBG(DBG_SCORE, "on space (%d,%d) lm=%d wm=%d\n",r,c, sp->b.f.lm, sp->b.f.wm);
+			mult *= sp->b.f.wm;	// word multiplier
 			ts = lval(m->tiles[i]);	// ts = tile score
 			tts += ts;		// total ts
-			tbs = ts * sp->f.lm;	// tile bonus score
+			tbs = ts * sp->b.f.lm;	// tile bonus score
 			ssf += ts;		// add current tile
-			if ((m->dir == M_HORIZ) && sp->f.hmls) {
-DBG(DBG_SCORE, "horiz move (%d + %d) * %d \n", sp->f.hmls, tbs, sp->f.wm);
-				xssf += (sp->f.hmls + tbs) * sp->f.wm;
+			if ((m->dir == M_HORIZ) && sp->b.f.hmls) {
+DBG(DBG_SCORE, "horiz move (%d + %d) * %d \n", sp->b.f.hmls, tbs, sp->b.f.wm);
+				xssf += (sp->b.f.hmls + tbs) * sp->b.f.wm;
 			}
-			if ((m->dir == M_VERT) && sp->f.vmls) {
-DBG(DBG_SCORE, "vert move (%d + %d) * %d \n", sp->f.vmls, tbs, sp->f.wm);
-				xssf += (sp->f.vmls + tbs) * sp->f.wm;
+			if ((m->dir == M_VERT) && sp->b.f.vmls) {
+DBG(DBG_SCORE, "vert move (%d + %d) * %d \n", sp->b.f.vmls, tbs, sp->b.f.wm);
+				xssf += (sp->b.f.vmls + tbs) * sp->b.f.wm;
 			}
 DBG(DBG_SCORE, "tile %c scores: ts=%d, tbs=%d, ssf=%d, xssf=%d\n", l2c(m->tiles[i]), ts, tbs, ssf, xssf);
 			if (doit) {
-				sp->f.letter = m->tiles[i];
+				sp->b.f.letter = m->tiles[i];
 				/* update mls stuff. Not easy. */
 				updatemls(b, m->dir, r, c, ts);
 			}
 			i++;	 // next letter please
 		} else {
 			if (playthrough) {
-				if (m->tiles[i] != sp->f.letter) {
-vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->f.letter), sp->f.letter);
+				if (m->tiles[i] != sp->b.f.letter) {
+vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
 				}
 				i++;	// I'm not sure about this....
 			}
-			ts = lval(sp->f.letter); // ts = tile score
+			ts = lval(sp->b.f.letter); // ts = tile score
 			tts += ts;		// total ts
 			ssf += ts;		// add current tile
 		}
 	}
 	if (m->dir == M_HORIZ) {
-		ends += b->spaces[r][c-1].f.vmls;
+		ends += b->spaces[r][c-1].b.f.vmls;
 DBG(DBG_SCORE, "get H ending end score %d at (%d, %d)\n", ends, r, c);
 		deltav = 1;
 		ortho = M_VERT;
 	} else {
-		ends += b->spaces[r-1][c].f.hmls;
+		ends += b->spaces[r-1][c].b.f.hmls;
 DBG(DBG_SCORE, "get V ending end score %d at (%d, %d)\n", ends, r, c);
 		deltah = 1;
 		ortho = M_HORIZ;
@@ -1040,40 +1182,31 @@ showboard(board_t b, int what)
 			sp = &(b.spaces[r][c]);
 			switch (what) {
 			case B_TILES:
-				if (sp->f.letter == EMPTY) {
+				if (sp->b.f.letter == EMPTY) {
 					printf(" _  ");
 				} else {
-					printf(" %c  ", l2c(sp->f.letter));
+					printf(" %c  ", l2c(sp->b.f.letter));
 				}
 				break;
 			case B_VMLS:
-				if (sp->f.vmls)
-					printf("^%-2d ", sp->f.vmls);
-				else if (sp->f.letter != EMPTY)
-					printf(" %c  ", l2c(sp->f.letter));
+				if (sp->b.f.vmls)
+					printf("^%-2d ", sp->b.f.vmls);
+				else if (sp->b.f.letter != EMPTY)
+					printf(" %c  ", l2c(sp->b.f.letter));
 				else
 					printf("    ");
 				break;
 			case B_HMLS:
-				if (sp->f.hmls)
-					printf(">%-2d ", sp->f.hmls);
-				else if (sp->f.letter != EMPTY)
-					printf(" %c  ", l2c(sp->f.letter));
+				if (sp->b.f.hmls)
+					printf(">%-2d ", sp->b.f.hmls);
+				else if (sp->b.f.letter != EMPTY)
+					printf(" %c  ", l2c(sp->b.f.letter));
 				else
 					printf("    ");
 				break;
-			case B_PLAYS:
-				if (sp->f.plays == 0) {
-					printf("--- ");
-				} else if (sp->f.plays == ALLPHABITS) {
-					printf(" *  ");
-				} else {
-					printf(" ?  ");
-				}
-				break;
 			case B_BONUS:
-				bl = sp->f.lm -1 ? sp->f.lm-1 : 0;
-				bl = sp->f.wm -1 ? sp->f.wm+1 : bl;
+				bl = sp->b.f.lm -1 ? sp->b.f.lm-1 : 0;
+				bl = sp->b.f.wm -1 ? sp->b.f.wm+1 : bl;
 				printf(" %s ", bonusnames[bl]);
 			}
 		}
@@ -1201,42 +1334,42 @@ printmove(move_t *m, int rev)
 inline int
 nldh(board_t *b, int ar, int ac, int pos) {
 	if (pos <= 0)
-		return ((ac == 0) || (b->spaces[ar][ac-1].f.letter == 0));
+		return ((ac == 0) || (b->spaces[ar][ac-1].b.f.letter == 0));
 	else
-		return ((ac == 14) || (b->spaces[ar][ac+1].f.letter == 0));
+		return ((ac == 14) || (b->spaces[ar][ac+1].b.f.letter == 0));
 }
 
 /* no letter directly vertical . */
 inline int
 nldv(board_t *b, int ar, int ac, int pos) {
 	if (pos <= 0)
-		return ((ar == 0) || (b->spaces[ar-1][ac].f.letter == 0));
+		return ((ar == 0) || (b->spaces[ar-1][ac].b.f.letter == 0));
 	else
-		return ((ar == 14) || (b->spaces[ar+1][ac].f.letter == 0));
+		return ((ar == 14) || (b->spaces[ar+1][ac].b.f.letter == 0));
 }
 
 /* no letter directly above */
 inline int
 nlda(board_t *b, int ar, int ac) {
-	return ((ar == 0) || (b->spaces[ar-1][ac].f.letter == 0));
+	return ((ar == 0) || (b->spaces[ar-1][ac].b.f.letter == 0));
 }
 
 /* no letter directly below */
 inline int
 nldb(board_t *b, int ar, int ac) {
-	return ((ar == 0) || (b->spaces[ar+1][ac].f.letter == 0));
+	return ((ar == 0) || (b->spaces[ar+1][ac].b.f.letter == 0));
 }
 
 /* no letter directly left */
 inline int
 nldl(board_t *b, int ar, int ac) {
-	return ((ac == 0) || (b->spaces[ar][ac-1].f.letter == 0));
+	return ((ac == 0) || (b->spaces[ar][ac-1].b.f.letter == 0));
 }
 
 /* no letter directly right */
 inline int
 nldr(board_t *b, int ar, int ac) {
-	return ((ac == 14) || (b->spaces[ar][ac+1].f.letter == 0));
+	return ((ac == 14) || (b->spaces[ar][ac+1].b.f.letter == 0));
 }
 
 /* GoOn with inline Gen. Still recursive. */
@@ -1289,20 +1422,20 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 DBG(DBG_GOON, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
 
 }
-		pl = b->spaces[currow][curcol].f.letter;
+		pl = b->spaces[currow][curcol].b.f.letter;
 		if (pl != '\0') {
 DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 			w[ndx] = pl;
 			rlp = NULL;
 			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(w[ndx])))-1;
 			sct.ts = lval(pl);
-			sct.tbs = b->spaces[currow][curcol].f.lm * sct.ts;
-			sct.wm = b->spaces[currow][curcol].f.wm;
+			sct.tbs = b->spaces[currow][curcol].b.f.lm * sct.ts;
+			sct.wm = b->spaces[currow][curcol].b.f.wm;
 			sct.play = 0;
 			if (m->dir == M_HORIZ) {
-				sct.lms = b->spaces[currow][curcol].f.hmls;
+				sct.lms = b->spaces[currow][curcol].b.f.hmls;
 			} else {
-				sct.lms = b->spaces[currow][curcol].f.vmls;
+				sct.lms = b->spaces[currow][curcol].b.f.vmls;
 			}
 		} else {
 			if (curid == -1) {
@@ -1339,12 +1472,12 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				pl |= bl;
 				w[ndx] = pl;
 				sct.ts = lval(pl);
-				sct.tbs = b->spaces[currow][curcol].f.lm * sct.ts;
-				sct.wm =  b->spaces[currow][curcol].f.wm;
+				sct.tbs = b->spaces[currow][curcol].b.f.lm * sct.ts;
+				sct.wm =  b->spaces[currow][curcol].b.f.wm;
 				if (m->dir == M_HORIZ) {
-					sct.lms = b->spaces[currow][curcol].f.hmls;
+					sct.lms = b->spaces[currow][curcol].b.f.hmls;
 				} else {
-					sct.lms = b->spaces[currow][curcol].f.vmls;
+					sct.lms = b->spaces[currow][curcol].b.f.vmls;
 				}
 				sct.play = 1;
 			}
@@ -1606,7 +1739,19 @@ printlstr(tm.tiles); printf("\n");
 }
 		ASSERT( (rv!=0));
 	}
+	{
+		/* finals. */
+		int nid; int bs;
 
+		nid =0; bs = 0;
+		bs = finals(nid);
+vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
+		ASSERT(bs == 0);
+		nid =125; bs = 0;
+		bs = finals(nid);
+vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
+		ASSERT(bs == 1);
+	}
 }
 #endif /* DEBUG */
 
@@ -1730,7 +1875,7 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			sc = score(&argmove, &sb, 0, action&ACT_PLAYTHRU);
 			vprintf(VNORM, "%s scores %d\n", argv[optind], sc);
 			if (action&ACT_MOVE) {
-makemove(&sb, &argmove, 1);
+makemove2(&sb, &argmove, 1);
 				VERB(VNOISY, "results of move:\n") {
 					showboard(sb, B_TILES);
 					showboard(sb, B_HMLS);
