@@ -215,12 +215,11 @@ const bagstr_t bags[26] = {
 /* investigate if byte-alignments will help performance... */
 typedef union _subspace {
 	struct {
-		uint32_t pad:8;		// pad out to 64 bits.  Reserved.
-		uint32_t hmls:7;	// horiz mv letter score.
-		uint32_t vmls:7;	// horiz mv letter score.
-		uint32_t lm:2;		// letter multiplier (1, 2 or 3)
-		uint32_t wm:2;		// word mulitplier (1, 2, or 3)
-		uint32_t letter:6;	// what's played here. NULL, A-Z,a-z.
+		uint8_t mls[2];		// H/V move letter score. (8bits)
+		letter_t letter;	// what's played here. (8)
+		uint8_t lm:2;		// letter multiplier (1, 2 or 3)
+		uint8_t wm:2;		// word mulitplier (1, 2, or 3)
+		uint8_t pad:4;		// pad out to 32 bits.  Reserved.
 	} f;
 	uint32_t all;
 } subspace_t;
@@ -228,8 +227,7 @@ typedef union _subspace {
 /* Space - spaces are what a board is made of. */
 typedef struct Space {
 	subspace_t b;
-	bs_t hmbs;
-	bs_t vmbs;
+	bs_t mbs[2];	/* H and V move bitsets. */
 } space_t;
 
 /* cvt letter to playable bit. */
