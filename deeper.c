@@ -586,17 +586,17 @@ finals(int nid)
 /* more utility small funcs */
 
 /* ultimate nld: nldn. No letter directly next to.
- * dir is H or V, side is -1 or 1.
+ * dir is H(0) or V(1), side is -1(before) or 1(after).
  */
 inline int
 nldn(board_t *b, int r, int c, int dir, int side)
 {
-	r += dir * side;
-	c += (1 - dir) * side;
+	int dr = dir * side;
+	int dc = (1 - dir) * side;
+	int ve = (c-7)/7;
+	int he = (r-7)/7;
 
-	((r>=0)&&(r<=MAXR)) ((c>=0)&&(c<=MAXC))
-		(b->spaces[r][c].b.f.letter == 0)
-
+	return (((dr==he)||(dc==ve))||(b->spaces[r+dr][c+dc].b.f.letter == 0));
 }
 
 /* no letter directly horizontal. */
@@ -649,30 +649,47 @@ nldr(board_t *b, int ar, int ac) {
  * between played tiles, we have more work to do.  End is -1 for
  * "before" and +1 for "after".  The row,col are the end of the word.
  * We can assume that at least two more squares are past the end.
+ * nid corresponds to the letter in the word, NOT the gap.
  */
 void
 dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 {
-	int cr, cc;
+	int cr=row, cc=col;
 	bs_t nbs, cbs, fbs = 0;
-	letter_t l;
+	letter_t spl, wl;
 	int dc, dr;
+	int gid, lid;
 
 	dr = dir * end;
 	dc = (1 - dir) * end;
 
-	nbs = bitset[nid];
-	while ( (l = nextl(&nbs, &nid)) ) {
-		nid = gotol(l, nid);
-		nid = gc(gaddag[nid]);
+	gid = gc(gaddag[nid]);
+	nbs = bitset[gid];
+	while ( (spl = nextl(&nbs, &gid)) ) {
+		gid = gotol(spl, gid);
+		lid = gc(gaddag[gid]);
+		cr = row + 2 * dr;
+		cc = col + 2 * dc;
 		do {
-			if (nldX  && final)  fbs |= l
-			if (!letter in nid) break;
-			row,col ++
-			traverse node for letter
-		} while (letter != 0)
+			if (nldn(b, cr, cc, dir, dr+dc) && gf(gaddag[nid])) {
+				setbit(fbs, spl-1);
+				break;
+			}
+			wl = b->spaces[cr][cc].b.f.letter;
+			if (!(l2b(wl) & bitset[lid])) {
+				/* it's not a word. */
+				break;
+			}
+			cr+=dr;cc+=dc;
+			lid = gotol(wl,lid);
+			lid = gc(gaddag[lid]);
+		} while (wl != '\0');
 	}
-	sp.Xmbs = fbs;
+	if (dir == M_HORIZ) {
+		b->spaces[row][col].vmbs = fbs;
+	} else {
+		b->spaces[row][col].hmbs = fbs;
+	}
 }
 
 
@@ -968,7 +985,7 @@ makemove2(board_t *b, move_t *m, int playthrough)
 		if (sp->b.f.letter != '\0') {
 			tts += lval(sp->b.f.letter);
 			nid = gotol(sp->b.f.letter, nid);
-			nid = gc(gaddad[nid]);
+			nid = gc(gaddag[nid]);
 			if (playthrough) {
 				if (m->tiles[i] != sp->b.f.letter) {
 vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
@@ -978,7 +995,7 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 		} else {
 			ts = lval(m->tiles[i]);
 			tts += ts;
-			nid = gotol(m->tiles[i]);
+			nid = gotol(m->tiles[i], nid);
 			nid = gc(gaddag[nid]);
 			updatemls(b, m->dir, cr, cc, ts);
 			sp->b.f.letter = m->tiles[i];
@@ -1827,6 +1844,106 @@ vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		bs = finals(nid);
 vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		ASSERT(bs == 1);
+	}
+	{
+		/* nldn */
+		board_t tb; int r; int c; int d; int s;
+		int rv;
+		tb = emptyboard;
+		tb.spaces[7][7].b.f.letter = c2l('A');
+
+		r = 7; c = 7; d = M_HORIZ; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 7; d = M_HORIZ; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 7; d = M_VERT; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 7; d = M_VERT; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+
+		r = 0; c = 0; d = M_HORIZ; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 0; c = 0; d = M_VERT; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 0; c = 0; d = M_VERT; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 0; c = 0; d = M_HORIZ; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+
+		r = 14; c = 14; d = M_HORIZ; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 14; c = 14; d = M_VERT; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 14; c = 14; d = M_VERT; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 14; c = 14; d = M_HORIZ; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+
+		r = 6; c = 7; d = M_HORIZ; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+
+		r = 6; c = 7; d = M_VERT; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+
+		r = 6; c = 7; d = M_VERT; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 6; c = 7; d = M_HORIZ; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+
+		r = 8; c = 7; d = M_HORIZ; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 8; c = 7; d = M_VERT; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 8; c = 7; d = M_VERT; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 8; c = 7; d = M_HORIZ; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+
+		r = 7; c = 6; d = M_HORIZ; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 6; d = M_VERT; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 6; d = M_VERT; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 6; d = M_HORIZ; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+
+		r = 7; c = 8; d = M_HORIZ; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 8; d = M_VERT; s = 1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 8; d = M_VERT; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 1);
+		r = 7; c = 8; d = M_HORIZ; s = -1;
+		rv = nldn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
 	}
 }
 #endif /* DEBUG */

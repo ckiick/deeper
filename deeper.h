@@ -147,7 +147,7 @@ typedef uint32_t bs_t;		// bitset
 
 
 /* letter to bit. l must be A-Z^?. Cannot be played blank.*/
-#define	l2b(l)	(setbit(0x0,(l-1)))
+#define	l2b(l)	(0x01<<(l-1))
 
 #define	UBLBIT	(1<<(UBLANK-1))
 #define SEPBIT	(1<<(SEP-1))
@@ -233,7 +233,7 @@ typedef struct Space {
 } space_t;
 
 /* cvt letter to playable bit. */
-#define l2bp(l)		(1<<((l)-1))
+#define l2pb(l)		(1<<((l)-1))
 #define EMPTY	0			// nothing played here yet
 
 /* Board: 15x15 array of spaces. */
