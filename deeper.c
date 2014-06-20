@@ -1027,6 +1027,92 @@ vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(
 	return 1;
 }
 
+/* old score was borken. Re-write to use current funcs and structs.
+ * remove doit(done). use scthingy(done). use new funcs(done).
+ * If lcount is wrong, fix it(done). Don't assume word length is known(done).
+ * row,col ALWAYS points at first letter in word, despite playthrough.
+ * Can assume that the word fits on the board (parsemove).
+ */
+int
+score2(move_t *m, board_t *b, int playthru)
+{
+	scthingy_t sct = newsct;	// pre-initialized!!!
+	int cr, cc, i = 0;
+	space_t *sp;
+	int dc, dr;
+	int sc = 0;
+	int pcnt;			// for lcount.
+
+DBG(DBG_SCORE,"in score with (%d,%d)->%s lcount=%d strlen=%d, playthru=%d\n", m->row, m->col,  m->dir == M_HORIZ ? "horiz" : "vert", m->lcount, strlen(m->tiles), playthru);
+
+	if (m->tiles[0] == '\0') return 0;// empty move scores nothing.
+	cr = m->row; cc = m->col;
+	dc = 1 - m->dir; dr = m->dir;
+	sp = &(b->spaces[cr][cc]);
+
+	for (;/*EVER*/;) {
+		if (sp->b.f.letter != '\0') {
+			/* on a previously played tile */
+			if (playthru) {
+				if (m->tiles[i] != sp->b.f.letter) {
+vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d), skipping\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+				}
+				i++;
+			}
+			sct.ts = lval(sp->b.f.letter);
+			sct.tbs = sct.ts;
+			sct.play = 0;
+			sct.wm = 1;
+			sct.lms = 0;
+		} else {
+			sct.ts = lval(m->tiles[i]);
+			sct.tbs = sct.ts * sp->b.f.lm;
+			sct.wm = sp->b.f.wm;
+			sct.lms = sp->b.f.mls[m->dir];
+			sct.play = 1;
+			i++;
+		}
+		updatescore(&sct);
+		/* are we done yet? */
+		if (m->tiles[i] == '\0') {
+			/* no tiles left... */
+			if (playthru || nldn(b, cr, cc, m->dir, 1)) {
+				break;
+			}
+		}
+		/* next space. remember we assume the word fits. */
+		cr += dr; cc += dc;
+		sp = &(b->spaces[cr][cc]);
+	}
+
+	/* some sanity checks. We could be messed up. */
+	if (m->tiles[i] != '\0') {
+		VERB(VNORM, "warning: %d leftover tiles=\n", strlen(&(m->tiles[i]))) {
+			printlstr( &(m->tiles[i]));
+			printf("\n");
+		}
+	}
+	if (! nldn(b, cr, cc, m->dir, 1)) {
+		vprintf(VNORM, "warning: letters on eow at %d, %d\n", cr, cc);
+	}
+	
+	sc = finalscore(sct);
+	updatescore(&sct);
+
+	/* correct lcount if it is off. use new playthru rules. */
+	if (playthru) {
+		pcnt = sct.played;
+	} else {
+		pcnt = strlen(m->tiles);
+	}
+
+	if (m->lcount != pcnt) {
+		vprintf(VNORM, "correcting move lcount from %d to %d\n", m->lcount, pcnt);
+		m->lcount = pcnt;
+	}
+	return sc;
+}
+
 /*
  * return the value of placing move m on board b.   If doit is set,
  * actually place the tiles, otherise we are just looking.
@@ -1899,7 +1985,8 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 		}
 		if (action & (ACT_SCORE|ACT_MOVE)) {
 //			sc = score(&argmove, &sb, action&ACT_MOVE, action&ACT_PLAYTHRU);
-			sc = score(&argmove, &sb, 0, action&ACT_PLAYTHRU);
+//			sc = score(&argmove, &sb, 0, action&ACT_PLAYTHRU);
+			sc = score2(&argmove, &sb, action&ACT_PLAYTHRU);
 			vprintf(VNORM, "%s scores %d\n", argv[optind], sc);
 			if (action&ACT_MOVE) {
 makemove3(&sb, &argmove, 1);
