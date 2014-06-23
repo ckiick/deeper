@@ -52,6 +52,8 @@ typedef uint64_t hrtime_t;
 #define DBG_GEN		0x00001000	// other half of movegen
 #define DBG_MATCH	0x00002000	// match (iterator)
 #define DBG_VERIFY	0x00004000	// show verify output.
+#define DBG_MBS		0x00008000	// move bitset updates
+#define DBG_MOVE	0x00010000	// when making moves
 #define DBG_DBG		0x40000000	// debugger: debug thyself.
 #define DBG_ALL		0x7FFFFFFF	// extremely noisy
 #define DBG_NONE	0x80000000	// doesn't match anything
@@ -247,9 +249,11 @@ typedef struct Board {
 #define	B_TILES		1
 #define B_VMLS		2
 #define B_HMLS		3
-#define B_PLAYS		4
+#define B_PLAYS		4		// defunct
 #define B_BONUS		5
-#define B_BAD		6
+#define B_HMBS		6
+#define B_VMBS		7
+#define B_BAD		8
 
 #define DL	1
 #define TL	2
