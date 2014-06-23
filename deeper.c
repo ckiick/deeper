@@ -1391,9 +1391,11 @@ printmove(move_t *m, int rev)
 	}
 	printf("\n");
 }
+
 /* GoOn with inline Gen. Still recursive. */
 /* initial call with pos=0, nodeid=0, and m->tiles empty. */
 /* do vertical moves as well. */
+/* update with nldn and stuff */
 int
 GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid, scthingy_t sct)
 {
@@ -1415,6 +1417,11 @@ GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid, scthingy_t sct)
 	bs_t bs = 0;
 	register letter_t pl;
 	int room = 0;
+	int side;
+	int dr = m->dir;
+	int dc = 1 - m->dir;
+	int ve = (ac-7)/7;
+	int he = (ar-7)/7;
 
 DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	printf(" - word=\"");
@@ -1426,15 +1433,16 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	updatescore(&sct);
 	ndx = strlen(w);	/* depth */
 	if (pos > 0) {
+		side = 1;
 		prelen = pos;
-		if (m->dir == M_HORIZ) {
-			curcol += ndx;
-		} else {
-			currow += ndx;
-		}
+		curcol += ndx * m->dir;
+		currow += ndx * (1 - m->dir);
 	} else {
+		side = -1;
 		prelen = ndx + 1;
 	}
+//	dr *= side;
+//	dc *= side;
 	w[ndx+1] = '\0';
 
 	while (rlp != NULL) {
@@ -1447,12 +1455,11 @@ DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 			w[ndx] = pl;
 			rlp = NULL;
 			curid = gotol(deblank(w[ndx]), nodeid);
-//			curid = nodeid + popc(bitset[nodeid] << (32 - deblank(w[ndx])))-1;
 			sct.ts = lval(pl);
-			sct.tbs = b->spaces[currow][curcol].b.f.lm * sct.ts;
-			sct.wm = b->spaces[currow][curcol].b.f.wm;
+			sct.tbs = sct.ts;
+			sct.wm = 1;
 			sct.play = 0;
-			sct.lms = b->spaces[currow][curcol].b.f.mls[m->dir];
+			sct.lms = 1;
 		} else {
 			if (curid == -1) {
 				rbs = lstr2bs(r->tiles);
@@ -1498,12 +1505,7 @@ DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(w[ndx])) {
 	printlstr(r->tiles); printf("\n");
 }
 		if (gf(gaddag[curid])) {
-			if (m->dir == M_HORIZ) {
-				room = nldh(b, currow, curcol, pos);
-			} else {
-				room = nldv(b, currow, curcol, pos);
-			}
-			if (room) {
+			if (nldn(b, currow, curcol, m->dir, side)) {
 				if (doscore) {
 					m->score = finalscore(sct);
 				}
@@ -1514,12 +1516,7 @@ DBG(DBG_GOON, "Gen gave i=%d, id=%d, l=%c and rack ", i, curid, l2c(w[ndx])) {
 			}
 		}
 		cid = gc(gaddag[curid]);
-		if (m->dir == M_HORIZ) {
-			room = (((pos <= 0) && (curcol > 0))  || ((pos > 0) && (curcol < 14)));
-		} else {
-			room = (((pos <= 0) && (currow > 0))  || ((pos > 0) && (currow < 14)));
-		}
-		if (room) {
+		if ((dc&&(he!=side)) || (dr&&(ve!=side))) {
 			/* recurse */
 DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, cid) {
 	printf(" word=\""); printlstr(w);
@@ -1538,10 +1535,11 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 		}
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
+			room = nldn(b, currow, curcol, m->dir, -1);
 			if (m->dir == M_HORIZ) {
-				room = nldl(b, currow, curcol) && (curcol < 14);
+				room = room && (curcol < 14);
 			} else {
-				room = nlda(b, currow, curcol) && (currow < 14);
+				room = room && (currow < 14);
 			}
 			if (room) {
 				sepid = gotol(SEP, cid);
@@ -1864,6 +1862,24 @@ vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		r = 7; c = 8; d = M_HORIZ; s = -1;
 		rv = nldn(&tb, r, c, d, s);
 		ASSERT(rv == 0);
+	}
+	{
+		/* score. simple cases, only 1 word */
+		move_t tm; board_t tb = emptyboard; int pt = 0; int rv;
+		int i, j, sum1, sum2;
+
+		sum1 = 0;  sum2 = 0;
+		strcpy(tm.tiles,"ZAP"); tm.row=0; tm.col = 0; tm.dir= M_HORIZ;
+		for (i=0; i < 13; i++) {
+			for (j = 0; j<13; j++) {
+				tm.row = i; tm.col = j; tm.dir=M_HORIZ;
+				sum1 += score2(&tm, &tb, 1);
+				tm.dir = M_VERT;
+				sum2 += score2(&tm, &tb, 1);
+			}
+		}
+		ASSERT(sum1 == sum2);
+
 	}
 }
 #endif /* DEBUG */
