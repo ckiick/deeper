@@ -604,24 +604,6 @@ isroom(int r, int c, int dir, int side)
 	return 0;
 }
 
-/* no anchor before.
- * so we can prune dups, detect if we are about to back over an anchor.
-inline int
-nab(board_t b, int r, int c, int dir)
-{
-	int room;
-	space_t sp;
-
-	if (c&&(1-dir)) || (r &&(dir)) {
-		r -= dir; c -= (1 - dir);
-		sp = b->spaces[r][c];
-		if (sp->b.f.letter != '\0') return 0;
-		return sp->b.f.anchor;
-	}
-	return 1;
-}
-
-
 /* ultimate nld: nldn. No letter directly next to.
  * dir is H(0) or V(1), side is -1(before) or 1(after).
  */
@@ -963,7 +945,7 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 
 int updatembs(board_t *b, int dir,  int r, int c, letter_t L);
 
-/* makemove3 + if umbs is set, we are doing a cross set, so don't
+/* makemove4, like mm3 + if umbs is set, we are doing a cross set, so don't
  * bother with score or another mbs.
  */
 int
@@ -1095,113 +1077,6 @@ DBG(DBG_MBS, "calling mm4 with move %d,%d, dir=%d, lcount=%d\n", um.row, um.col,
 	b->spaces[r][c].b.f.letter = L;
 }
 
-/* redoit. traverse in (reverse) order, using gaddag. remember it's not just
- * a dawg. use nldn(done). Find a way to make mls/mbs use v/h bit. (done)
- * Use dobridge(done). remove dup code(done).
- * assume word fits and is legal.
- */
-int
-makemove3(board_t *b, move_t *m, int playthrough)
-{
-	int cr, cc, dr, dc, ts, i, tts, er, ec;
-	space_t *sp;
-	letter_t l;
-	bs_t fbs;
-	int room;
-	int side;
-
-	dr = m->dir;
-	dc = 1 - m->dir;
-	cr = m->row;
-	cc = m->col;
-	tts = 0;
-	int nid = 0;
-	int wlen = 0;
-
-	/* start at the end of the word. */
-	i = strlen(m->tiles);
-	if (i == 0) { return 0; }	// an empty play. (not legal)
-	if (playthrough) {
-		wlen = i;
-	} else {
-		wlen = m->lcount;
-	}
-	if (m->dir == M_HORIZ) {
-		cc += wlen;
-	} else {
-		cr += wlen;
-	}
-	i--;		// cc/cr actualy points 1 past.
-	er = cr - dr;
-	ec = cc - dc;
-
-	/* part A: going "backwards" */
-	do {
-		cr-=dr; cc-=dc;
-		sp = &(b->spaces[cr][cc]);
-		if (sp->b.f.letter == '\0') {
-			/* place tile */
-			ASSERT(i >= 0);
-			l = m->tiles[i];
-			updatemls(b, m->dir, cr, cc, lval(l));
-			sp->b.f.letter = m->tiles[i];
-			i--;
-		} else {
-			l = sp->b.f.letter;
-			if (playthrough) {
-				if (m->tiles[i] != sp->b.f.letter) {
-vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
-				}
-				i--;
-			}
-		}
-		ts = lval(l);
-		tts += ts;
-		nid = gotol(l, nid);
-		nid = gc(gaddag[nid]);
-	} while ( (cr > m->row) || (cc > m->col));
-
-	/* we are at first letter in word. nid is with us. */
-	/* either at edge of board, or there's a space before this one */
-	/* sp should still point to first letter */
-	/* we should also be out of tiles in the move */
-	ASSERT(nldn(b, cr, cc, m->dir, -1));
-	ASSERT((cr == m->row) && (cc == m->col));
-	ASSERT(i < 0);
-	for (side = -1; side <= 1; side +=2) {
-		if (side == 1) {
-			dc *= -side; dr *= -side;
-			cr = er; cc = ec;
-			sp = &(b->spaces[er][ec]);
-			/* cross the SEP. If no SEP, the mbs is empty. */
-			if (SEPBIT & bitset[nid]) {
-				nid = gotol(SEP, nid);
-				nid = gc(gaddag[nid]);
-			} else {
-				nid = -1;
-			}
-		}
-		room = (dr && cr) || (dc && cc);
-		if (room) {
-			/* stash sum under first letter */
-			sp->b.f.mls[1-m->dir] = tts;
-			cr -= dr; cc -= dc;
-			sp = &(b->spaces[cr][cc]);
-			if (nldn(b, cr, cc, m->dir, side)) {
-				/* an unplayed space */
-				ASSERT(sp->b.f.letter == '\0');
-				sp->b.f.mls[1-m->dir] = tts;
-				sp->mbs[1-m->dir] = finals(nid);
-			} else {
-				/* it's a bridge space */
-				dobridge(b, nid, cr, cc, m->dir, side);
-				sp->b.f.mls[1-m->dir] = tts + b->spaces[cr-dr][cc-dc].b.f.mls[1-m->dir];
-			}
-		}
-	}
-	return 1;
-}
-
 /* old score was borken. Re-write to use current funcs and structs.
  * remove doit(done). use scthingy(done). use new funcs(done).
  * If lcount is wrong, fix it(done). Don't assume word length is known(done).
@@ -1279,7 +1154,6 @@ vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d), skipping\n
 		pcnt = sct.played;
 	} else {
 		pcnt = (cr - m->row) + (cc - m->col) + 1;
-//		pcnt = strlen(m->tiles);
 	}
 
 	if (m->lcount != pcnt) {
@@ -1287,97 +1161,6 @@ vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d), skipping\n
 		m->lcount = pcnt;
 	}
 	return sc;
-}
-
-/*
- * return the value of placing move m on board b.   If doit is set,
- * actually place the tiles, otherise we are just looking.
- * playthrough is for moves that include tiles already on board.
- */
-/* I believe this routine misses some cases.
- * yup, it's broken.
- */
-int
-score(move_t *m, board_t *b, int doit, int playthrough)
-{
-	int ssf = 0, xssf = 0;	// [vertical] score so far
-	int ends = 0;		// connected at ends.
-	int ps;			// non-bonus sum of tile scores palyed
-	int mult = 1;		// word multiplier
-	int deltah = 0, deltav = 0;	// incrementers
-	int r, c, i = 0;
-	int ts;			// plain tile score
-	int tts = 0;		// total ts
-	int tbs;		// tile bonus score
-	int bingo = 0;
-	int ortho;
-	int total;
-	space_t *sp;
-
-DBG(DBG_SCORE,"in score with (%d,%d)->%s %d letters\n", m->row, m->col,  m->dir == M_HORIZ ? "horiz" : "vert", m->lcount);
-
-	deltav = 1 - m->dir;
-	deltah = m->dir;
-	ortho = 1 - m->dir;
-	ends = b->spaces[m->row][m->col].b.f.mls[1-m->dir];
-DBG(DBG_SCORE, "get beginning end score %d at (%d, %d)\n", ends, m->row, m->col);
-DBG(DBG_SCORE, "moving %d so deltah=%d and deltav=%d\n", m->dir, deltah, deltav);
-
-	if (m->lcount >= RACKSIZE) bingo = BINGOBONUS;
-
-	for (i=0, r=m->row, c=m->col; i < m->lcount; r += deltah, c += deltav) {
-		sp = &(b->spaces[r][c]);
-		if (sp->b.f.letter == EMPTY) {
-DBG(DBG_SCORE, "placing %dth out of %d %c(%d) at (%d,%d)\n", i, m->lcount, l2c(m->tiles[i]), m->tiles[i], r, c);
-DBG(DBG_SCORE, "on space (%d,%d) lm=%d wm=%d\n",r,c, sp->b.f.lm, sp->b.f.wm);
-			mult *= sp->b.f.wm;	// word multiplier
-			ts = lval(m->tiles[i]);	// ts = tile score
-			tts += ts;		// total ts
-			tbs = ts * sp->b.f.lm;	// tile bonus score
-			ssf += ts;		// add current tile
-			if ((m->dir == M_HORIZ) && sp->b.f.mls[m->dir]) {
-DBG(DBG_SCORE, "horiz move (%d + %d) * %d \n", sp->b.f.mls[m->dir], tbs, sp->b.f.wm);
-				xssf += (sp->b.f.mls[m->dir] + tbs) * sp->b.f.wm;
-			}
-			if ((m->dir == M_VERT) && sp->b.f.mls[m->dir]) {
-DBG(DBG_SCORE, "vert move (%d + %d) * %d \n", sp->b.f.mls[m->dir], tbs, sp->b.f.wm);
-				xssf += (sp->b.f.mls[m->dir] + tbs) * sp->b.f.wm;
-			}
-DBG(DBG_SCORE, "tile %c scores: ts=%d, tbs=%d, ssf=%d, xssf=%d\n", l2c(m->tiles[i]), ts, tbs, ssf, xssf);
-			if (doit) {
-				sp->b.f.letter = m->tiles[i];
-				/* update mls stuff. Not easy. */
-				updatemls(b, m->dir, r, c, ts);
-			}
-			i++;	 // next letter please
-		} else {
-			if (playthrough) {
-				if (m->tiles[i] != sp->b.f.letter) {
-vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
-				}
-				i++;	// I'm not sure about this....
-			}
-			ts = lval(sp->b.f.letter); // ts = tile score
-			tts += ts;		// total ts
-			ssf += ts;		// add current tile
-		}
-	}
-	if (m->dir == M_HORIZ) {
-		ends += b->spaces[r][c-1].b.f.mls[1-m->dir];
-DBG(DBG_SCORE, "get H ending end score %d at (%d, %d)\n", ends, r, c);
-		deltav = 1;
-		ortho = M_VERT;
-	} else {
-		ends += b->spaces[r-1][c].b.f.mls[1-m->dir];
-DBG(DBG_SCORE, "get V ending end score %d at (%d, %d)\n", ends, r, c);
-		deltah = 1;
-		ortho = M_HORIZ;
-	};
-	if (doit)
-		updatemls(b, ortho, m->row, m->col, tts + ends);	// on ends
-	total = bingo + (ssf * mult) + xssf + ends;
-DBG(DBG_SCORE, "total score is bingo=%d + sum=%d * mult=%d + xc=%d + ends=%d = %d\n", bingo, ssf, mult, xssf, ends, total);
-	return total;
 }
 
 /* text display of board, what controls the actual info displayed */
@@ -1634,7 +1417,6 @@ GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid, scthingy_t sct)
  	letter_t *w = m->tiles;
 	int ac = m->col;
 	int ar = m->row;
-//	int i = 0;
 	int ndx = 0;
 	int prelen;
 	int curcol = ac;
@@ -1644,7 +1426,6 @@ GoOn2(board_t *b, move_t *m, int pos, rack_t *r,  int nodeid, scthingy_t sct)
 	bs_t bl = 0;
 	bs_t bs = 0;
 	register letter_t pl;
-	int room = 0;
 	int side;
 	int dr = m->dir;
 	int dc = 1 - m->dir;
@@ -1669,9 +1450,6 @@ DBG(DBG_GOON, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 		side = -1;
 		prelen = ndx + 1;
 	}
-//	dr *= side;
-//	dc *= side;
-	/* try it here */
 	/* if NOT first, don't redo anchors */
 DBG(DBG_MOVE, "time to prune, anchor=%d\n", b->spaces[currow][curcol].b.f.anchor);
 	if ((ndx > 0) && b->spaces[currow][curcol].b.f.anchor) {
@@ -1752,14 +1530,6 @@ DBG(DBG_GOON, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
 		}
 		cid = gc(gaddag[curid]);
 		if (isroom(currow, curcol, m->dir, side)) {
-#ifdef NOTDEF
-//		if ((dc&&(he!=side)) || (dr&&(ve!=side))) {
-if (m->dir == M_HORIZ)
-	room = (((pos <= 0)&&(curcol>0)) || ((pos>0)&&(curcol < 14)));
-else
-	room = (((pos <= 0)&&(currow>0)) || ((pos>0)&&(currow < 14)));
-if (room) {
-#endif
 			/* recurse */
 DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, cid) {
 	printf(" word=\""); printlstr(w);
@@ -1778,13 +1548,8 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 		}
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
-			room = nldn(b, currow, curcol, m->dir, -1);
-			if (m->dir == M_HORIZ) {
-				room = room && (curcol < 14);
-			} else {
-				room = room && (currow < 14);
-			}
-			if (room) {
+			if (nldn(b, currow, curcol, m->dir, -1) &&
+				isroom(currow, curcol, m->dir, 1)) {
 				sepid = gotol(SEP, cid);
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
@@ -2373,15 +2138,12 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			}
 		}
 		if (action & (ACT_SCORE|ACT_MOVE)) {
-//			sc = score(&argmove, &sb, action&ACT_MOVE, action&ACT_PLAYTHRU);
-//			sc = score(&argmove, &sb, 0, action&ACT_PLAYTHRU);
 			if (! action & ACT_PLAYTHRU) {
 				argmove.lcount = movelen(&sb, &argmove, 0);
 			}
 			sc = score2(&argmove, &sb, action&ACT_PLAYTHRU);
 			vprintf(VNORM, "%s scores %d\n", argv[optind], sc);
 			if (action&ACT_MOVE) {
-// makemove3(&sb, &argmove, action&ACT_PLAYTHRU);
 makemove4(&sb, &argmove, action&ACT_PLAYTHRU, 0);
 				VERB(VNOISY, "results of move:\n") {
 					showboard(sb, B_TILES);
