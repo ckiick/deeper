@@ -253,7 +253,8 @@ typedef struct Board {
 #define B_BONUS		5
 #define B_HMBS		6
 #define B_VMBS		7
-#define B_BAD		8
+#define B_ANCHOR	8
+#define B_BAD		9
 
 #define DL	1
 #define TL	2

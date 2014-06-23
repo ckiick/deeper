@@ -473,7 +473,6 @@ initstuff()
 	/* mark all legal start moves */
 	startboard = emptyboard; 	// does this still work? YES.
 	startboard.spaces[STARTR][STARTC].b.f.anchor = 1;	// that's all.
-	startboard.spaces[STARTR][STARTC-1].b.f.anchor = 1;	// that's all.
 	// init stats
 	globalstats.evals = 0;
 	globalstats.evtime = 0;
@@ -589,7 +588,7 @@ finals(int nid)
 
 /* more utility small funcs */
 
-/* room: given dir and side, is there room over there? */
+/* isroom: given dir and side, is there room over there? */
 /* don't be too clever. We can assume current r,c are in bounds.*/
 inline int
 isroom(int r, int c, int dir, int side)
@@ -955,7 +954,6 @@ makemove4(board_t *b, move_t *m, int playthrough, int umbs)
 	space_t *sp;
 	letter_t l;
 	bs_t fbs;
-	int room;
 	int side;
 
 	dr = m->dir;
@@ -994,6 +992,7 @@ makemove4(board_t *b, move_t *m, int playthrough, int umbs)
 			if (! umbs) updatemls(b, m->dir, cr, cc, lval(l));
 			if (! umbs) updatembs(b, m->dir, cr, cc, l);
 			sp->b.f.letter = m->tiles[i];
+			sp->b.f.anchor = 0;
 			i--;
 		} else {
 			l = sp->b.f.letter;
@@ -1031,15 +1030,15 @@ DBG(DBG_MOVE, "moving from %d to %d via %c\n", nid, gc(gaddag[gotol(l,nid)]), l2
 				nid = -1;
 			}
 		}
-		room = (dr && cr) || (dc && cc);
-		if (room) {
+		if (isroom(cr, cc, m->dir, side)) {
 			/* stash sum under first letter */
 			sp->b.f.mls[1-m->dir] = tts;
 			cr -= dr; cc -= dc;
 			sp = &(b->spaces[cr][cc]);
+			ASSERT(sp->b.f.letter == '\0');
+			sp->b.f.anchor = 1;
 			if (nldn(b, cr, cc, m->dir, side)) {
 				/* an unplayed space */
-				ASSERT(sp->b.f.letter == '\0');
 				sp->b.f.mls[1-m->dir] = tts;
 				sp->mbs[1-m->dir] = finals(nid);
 DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, tts, finals(nid), nid);
@@ -1196,6 +1195,9 @@ showboard(board_t b, int what)
 	case B_VMBS:
 		printf("Vertical move bitsets\n");
 		break;
+	case B_ANCHOR:
+		printf("anchor squares\n");
+		break;
 	default:
 		printf("unknown. what?\n");
 		break;
@@ -1245,6 +1247,13 @@ showboard(board_t b, int what)
 					printf(" %c  ", l2c(sp->b.f.letter));
 				} else {
 					printf("%x ", sp->mbs[M_VERT]);
+				}
+				break;
+			case B_ANCHOR:
+				if (sp->b.f.anchor) {
+					printf(" &  ");
+				} else {
+					printf("    ");
 				}
 				break;
 			case B_BONUS:
@@ -2151,6 +2160,7 @@ makemove4(&sb, &argmove, action&ACT_PLAYTHRU, 0);
 					showboard(sb, B_VMLS);
 					showboard(sb, B_HMBS);
 					showboard(sb, B_VMBS);
+					showboard(sb, B_ANCHOR);
 				}
 			}
 		}
