@@ -472,7 +472,9 @@ initstuff()
 	}
 	/* mark all legal start moves */
 	startboard = emptyboard; 	// does this still work? YES.
-	startboard.spaces[STARTR][STARTC].b.f.anchor = 1;	// that's all.
+	startboard.spaces[STARTR][STARTC].b.f.anchor = 1;
+	startboard.spaces[STARTR][STARTC].mbs[M_HORIZ] = ALLPHABITS;
+	startboard.spaces[STARTR][STARTC].mbs[M_VERT] = ALLPHABITS;
 	// init stats
 	globalstats.evals = 0;
 	globalstats.evtime = 0;
@@ -1489,6 +1491,9 @@ DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 				curid = nodeid;
 				if (bl) bs = ALLPHABITS & bitset[nodeid];
 				else bs = rbs & bitset[nodeid];
+				if (b->spaces[currow][curcol].b.f.anchor) {
+					bs &= b->spaces[currow][curcol].mbs[m->dir];
+				}
 DBG(DBG_GOON, "first bl=%x, rbs=%x, id=%d, bs=%x\n", bl, rbs, nodeid, bs);
 			} else {
 				if (bl) *rlp = UBLANK;
@@ -1498,6 +1503,9 @@ DBG(DBG_GOON, "Pop %c at %d back to\n", l2c(w[ndx]), ndx);
 			if ((bs == 0) && (bl)) {
 				bl = 0;
 				bs = rbs & bitset[nodeid];
+				if (b->spaces[currow][curcol].b.f.anchor) {
+					bs &= b->spaces[currow][curcol].mbs[m->dir];
+				}
 				curid = nodeid;
 			}
 			if (bs == 0) {
