@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 /* just in case */
-#define	VER	"0.6.5"
+#define	VER	"0.7.1"
 
 /* turns out gethrtime is not standard */
 #if !defined(__sun)

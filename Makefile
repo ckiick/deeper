@@ -2,6 +2,9 @@
 
 # todo: customize for linux vs solaris. eg: -lrt.
 
+REV := $(shell git rev-list HEAD --count)
+
+
 all:	dict gdexp deeper
 
 clean:
@@ -14,10 +17,10 @@ deeper:	deeper.c deeper.h
 	gcc -O4 -o deeper deeper.c -lrt
 
 debug:	deeper.c deeper.h
-	gcc -g -DDEBUG -o deeper deeper.c -lrt
+	gcc -g -DREV=$(REV) -DDEBUG -o deeper deeper.c -lrt
 
 gdexp:	gdexp.c
-	gcc -o gdexp gdexp.c
+	gcc -DREV=$(REV) -o gdexp gdexp.c
 
 dict:	ENABLE.gaddag  ENABLE.bitset
 

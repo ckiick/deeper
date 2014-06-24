@@ -2123,6 +2123,8 @@ main(int argc, char **argv)
 		return 4;
 	}
 	DBG(DBG_DBG, "using verbose level %d\n", verbose);
+
+	vprintf(VVERB, "Program version %s.%d\n", VER, REV);
 #ifdef DEBUG
 	verify();
 #endif
