@@ -221,8 +221,8 @@ typedef union _subspace {
 		letter_t letter;	// what's played here. (8)
 		uint8_t lm:2;		// letter multiplier (1, 2 or 3)
 		uint8_t wm:2;		// word mulitplier (1, 2, or 3)
-		uint8_t anchor:1;	// start here.
-		uint8_t pad:3;		// pad out to 32 bits.  Reserved.
+		uint8_t anchor:2;	// start here.
+		uint8_t pad:2;		// pad out to 32 bits.  Reserved.
 	} f;
 	uint32_t all;
 } subspace_t;

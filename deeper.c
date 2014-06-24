@@ -22,7 +22,7 @@
 #include <sys/stat.h>	// fstat
 #include <fcntl.h>	// open, etc
 #include <strings.h>	// str*
-#include <unistd.h>	// getopt
+#include <unistd.h>	// getopt, seek
 #include <ctype.h>	// isupper, etc
 
 #if defined(__sun)
@@ -97,6 +97,7 @@ gstats_t globalstats;		// global statistics
 /* other options */
 int doscore = 0;
 int domove = 0;
+char *infile = 0;
 
 /* job/process control */
 int globaldone = 0;		// set to stop all threads.
@@ -117,6 +118,8 @@ usage(char *me)
 	"\t-D: turn on all debug flags (for now)\n"
 	"\t-R letters: use (up to 7) letters as initial rack\n"
 	"\t-G: generate list of moves using args\n"
+	"\t-P: set playthru mode for moves\n"
+	"\t-I file: read moves from input file\n"
 	"\t-d name: use name.gaddag as dictionary. [default=ENABLE]\n"
 	"\t-v: increase verbosity level\n"
 	"\t-q: no messages, only return values. Cancels -v.\n"
@@ -472,7 +475,7 @@ initstuff()
 	}
 	/* mark all legal start moves */
 	startboard = emptyboard; 	// does this still work? YES.
-	startboard.spaces[STARTR][STARTC].b.f.anchor = 1;
+	startboard.spaces[STARTR][STARTC].b.f.anchor = 3;
 	startboard.spaces[STARTR][STARTC].mbs[M_HORIZ] = ALLPHABITS;
 	startboard.spaces[STARTR][STARTC].mbs[M_VERT] = ALLPHABITS;
 	// init stats
@@ -916,10 +919,10 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 	sct->ttl_ts += sct->ts;
 	sct->ttl_tbs += sct->tbs;
 	sct->ttl_wm *= sct->wm;
-	if (sct->lms > 0) {
+	if ((sct->lms > 0) || (sct->play > 1)) {
 		sct->ttl_xs += sct->wm * (sct->lms + sct->tbs);
 	}
-	sct->played += sct->play;
+	if (sct->play) sct->played++;
 	sct->ts = 0; sct->tbs = 0; sct->wm=1; sct->lms = 0; sct->play = 0;
 }
 
@@ -946,11 +949,123 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 
 int updatembs(board_t *b, int dir,  int r, int c, letter_t L);
 
+/* mm5 is like mm4, but it does not rely on lcount to find the word size.
+ */
+int
+makemove5(board_t *b, move_t *m, int playthru, int umbs)
+{
+	int cr, cc, dr, dc, ts, i, tts, er, ec;
+	space_t *sp;
+	letter_t l;
+	bs_t fbs;
+	int side;
+	int len = 0;
+
+	dr = m->dir;
+	dc = 1 - m->dir;
+	tts = 0;
+	int nid = 0;
+	int wlen = 0;
+
+	/* start at the end of the word. */
+	i = strlen(m->tiles);
+	if (i == 0) { return 0; }	// an empty play. (not legal)
+	if (playthru) {
+		wlen = i;
+	} else {
+//		if ((m->lcount == 0) && umbs && !playthru) {
+//			fixlen(b, m, 0);
+//		}
+		wlen = m->lcount;
+	}
+	cr = m->row;
+	cc = m->col;
+	if (m->dir == M_HORIZ) {
+		cc += wlen;
+	} else {
+		cr += wlen;
+	}
+	i--;		// cc/cr actualy points 1 past.
+	er = cr - dr;
+	ec = cc - dc;
+
+	/* part A: going "backwards" */
+	do {
+		cr-=dr; cc-=dc;
+		sp = &(b->spaces[cr][cc]);
+		if (sp->b.f.letter == '\0') {
+			int rv;
+			/* place tile */
+			ASSERT(i >= 0);
+			l = m->tiles[i];
+			if (! umbs) updatemls(b, m->dir, cr, cc, lval(l));
+			if (! umbs) updatembs(b, m->dir, cr, cc, l);
+			sp->b.f.letter = m->tiles[i];
+			sp->b.f.anchor = 0;
+			i--;
+		} else {
+			l = sp->b.f.letter;
+			if (playthru) {
+				if (m->tiles[i] != sp->b.f.letter) {
+vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+				}
+				i--;
+			}
+		}
+		ts = lval(l);
+		tts += ts;
+DBG(DBG_MOVE, "moving from %d to %d via %c\n", nid, gc(gaddag[gotol(l,nid)]), l2c(l));
+		nid = gotol(l, nid);
+		nid = gc(gaddag[nid]);
+	} while ( (cr > m->row) || (cc > m->col));
+
+	/* we are at first letter in word. nid is with us. */
+	/* either at edge of board, or there's a space before this one */
+	/* sp should still point to first letter */
+	/* we should also be out of tiles in the move */
+	ASSERT(nldn(b, cr, cc, m->dir, -1));
+	ASSERT((cr == m->row) && (cc == m->col));
+	ASSERT(i < 0);
+	for (side = -1; side <= 1; side +=2) {
+		if (side == 1) {
+			dc *= -side; dr *= -side;
+			cr = er; cc = ec;
+			sp = &(b->spaces[er][ec]);
+			/* cross the SEP. If no SEP, the mbs is empty. */
+			if (SEPBIT & bitset[nid]) {
+				nid = gotol(SEP, nid);
+				nid = gc(gaddag[nid]);
+			} else {
+				nid = -1;
+			}
+		}
+		if (isroom(cr, cc, m->dir, side)) {
+			/* stash sum under first letter */
+			sp->b.f.mls[1-m->dir] = tts;
+			cr -= dr; cc -= dc;
+			sp = &(b->spaces[cr][cc]);
+			ASSERT(sp->b.f.letter == '\0');
+			sp->b.f.anchor |= m->dir + 1;
+			if (nldn(b, cr, cc, m->dir, side)) {
+				/* an unplayed space */
+				sp->b.f.mls[1-m->dir] = tts;
+				sp->mbs[1-m->dir] = finals(nid);
+DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, tts, finals(nid), nid);
+			} else {
+				/* it's a bridge space */
+				dobridge(b, nid, cr, cc, m->dir, side);
+				sp->b.f.mls[1-m->dir] = tts + b->spaces[cr-dr][cc-dc].b.f.mls[1-m->dir];
+			}
+		}
+	}
+	return 1;
+}
+
 /* makemove4, like mm3 + if umbs is set, we are doing a cross set, so don't
  * bother with score or another mbs.
  */
 int
-makemove4(board_t *b, move_t *m, int playthrough, int umbs)
+makemove4(board_t *b, move_t *m, int playthru, int umbs)
 {
 	int cr, cc, dr, dc, ts, i, tts, er, ec;
 	space_t *sp;
@@ -969,7 +1084,7 @@ makemove4(board_t *b, move_t *m, int playthrough, int umbs)
 	/* start at the end of the word. */
 	i = strlen(m->tiles);
 	if (i == 0) { return 0; }	// an empty play. (not legal)
-	if (playthrough) {
+	if (playthru) {
 		wlen = i;
 	} else {
 		wlen = m->lcount;
@@ -998,9 +1113,9 @@ makemove4(board_t *b, move_t *m, int playthrough, int umbs)
 			i--;
 		} else {
 			l = sp->b.f.letter;
-			if (playthrough) {
+			if (playthru) {
 				if (m->tiles[i] != sp->b.f.letter) {
-vprintf(VNORM, "warning: playthrough %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
 				}
 				i--;
 			}
@@ -1055,6 +1170,7 @@ DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, 
 }
 
 /* use mm4, so we are slightly recursive.
+ * returns 1 IFF there are actually any cross tiles.
  */
 int
 updatembs(board_t *b, int dir,  int r, int c, letter_t L)
@@ -1067,21 +1183,24 @@ DBG(DBG_MBS, "at %d,%d dir=%d, for %c\n", r, c, dir, l2c(L));
 	um.tiles[0] = L; um.tiles[1] = '\0';
 	um.row = r; um.col = c; um.lcount = 0; um.dir = 1 - dir;
 
-	while ( ! nldn(b, um.row, um.col, um.dir, 1)) {
-		um.col += dc; um.row += dr;
-	}
-	um.lcount = (um.col - c) + (um.row - r) + 1;
+//	while ( ! nldn(b, um.row, um.col, um.dir, 1)) {
+//		um.col += dc; um.row += dr;
+//	}
+//	um.lcount = (um.col - c) + (um.row - r) + 1;
+	um.lcount = 0;
 
 DBG(DBG_MBS, "calling mm4 with move %d,%d, dir=%d, lcount=%d\n", um.row, um.col, um.dir, um.lcount);
 	b->spaces[r][c].b.f.letter = '\0';
-	return makemove4(b, &um, 0, 1);
+	fixlen(b, &um, 0);
+	makemove5(b, &um, 0, 1);
 	b->spaces[r][c].b.f.letter = L;
+	return (um.lcount);
 }
 
 /* old score was borken. Re-write to use current funcs and structs.
  * remove doit(done). use scthingy(done). use new funcs(done).
  * If lcount is wrong, fix it(done). Don't assume word length is known(done).
- * row,col ALWAYS points at first letter in word, despite playthrough.
+ * row,col ALWAYS points at first letter in word, despite playthru.
  * Can assume that the word fits on the board (parsemove).
  */
 int
@@ -1361,6 +1480,7 @@ DBG(DBG_ARGS, "plen=%d, len=%d, word=%s\n", plen, len, cp);
 }
 
 /* if we can't trust lcount, scan the board to find the actual length.
+ * This function assumes that m->row,col are already correct.
  */
 int
 movelen(board_t *b, move_t *m, int playthru)
@@ -1385,13 +1505,29 @@ movelen(board_t *b, move_t *m, int playthru)
 			return len;
 		}
 	}
+	cc -= 1 - m->dir; cr -= m->dir;
 	if (!playthru) {
 		while (!nldn(b, cr, cc, m->dir, 1)) {
 			len++;
+			cc += 1 - m->dir;
+			cr  += m->dir;
 		}
 	}
 	return len;
 }
+
+/* use info on board to set move row, col and lcount.
+ * we can assume we don't have to back over any spaces.
+ */
+fixlen(board_t *b, move_t *m, int playthru)
+{
+	/* first move "back" over letters. */
+	while (!nldn(b, m->row, m->col, m->dir, -1)) {
+		m->col -=(1-m->dir); m->row-=m->dir;
+	}
+	m->lcount = movelen(b, m, playthru);
+}
+
 
 void
 printmove(move_t *m, int rev)
@@ -1528,7 +1664,7 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				sct.tbs = b->spaces[currow][curcol].b.f.lm * sct.ts;
 				sct.wm =  b->spaces[currow][curcol].b.f.wm;
 				sct.lms = b->spaces[currow][curcol].b.f.mls[m->dir];
-				sct.play = 1;
+				sct.play = 1 + b->spaces[currow][curcol].b.f.anchor;
 			}
 		}
 DBG(DBG_GOON, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
@@ -2039,6 +2175,72 @@ VERB(VVERB, "rv=%d for %d,%d %s pt=%d tiles=", rv, tm.row, tm.col, tm.dir == M_H
 }
 #endif /* DEBUG */
 
+#define WS	" \n\t"
+/* if this function retuns NULL, it should not be called again. */
+char *
+getnextarg(int argc, char **argv, int *optind)
+{
+	static char *buf = NULL;
+	char *ap = NULL;
+	/* read file first, if any */
+	if (infile != NULL) {
+		int fd = -1;
+		off_t len;
+		int rv;
+		fd = open(infile, O_RDONLY);
+		infile = NULL;
+		if (fd < 0) {
+			perror("open");
+			goto end;
+		}
+		len = lseek(fd, 0, SEEK_END);
+		if (len < 0) {
+			perror("lseek");
+			goto end;
+		}
+		(void) lseek(fd, 0, SEEK_SET);
+		buf = malloc(len+2);
+		if (buf == NULL) {
+			perror("malloc");
+			goto end;
+		}
+		rv = read(fd, buf, len);
+		if (rv < 0) {
+			perror("read");
+			goto end;
+		} else if (rv != len) {
+			printf("error reading move file, only got %d out of %d bytes\n", rv, len);
+			len = rv;
+		}
+end:
+		infile = NULL;
+		close(fd);
+		if (buf != NULL) {
+			buf[len]='\0';
+			ap = strtok(buf, WS);
+			if (ap == NULL) {
+				free(buf); buf = NULL;
+			} else {
+				return ap;
+			}
+		}
+	}
+	if (buf != NULL) {
+		ap = strtok(NULL, WS);
+		if (ap == NULL) {
+			free(buf);
+			buf == NULL;
+		} else {
+			return ap;
+		}
+	}
+	if (*optind < argc) {
+		ap = argv[*optind];
+		*optind += 1;
+		return ap;
+	}
+	return NULL;
+}
 
 #define ACT_LOOKUP	0x001
 #define	ACT_ANAGRAM	0x002
@@ -2057,9 +2259,13 @@ main(int argc, char **argv)
 	int c;		// option letter for getopt
 	int errs = 0, anas = 0, moves = 0;
 	board_t sb;
+	char *argstr = NULL;
 
-        while ((c = getopt(argc, argv, "ALSDMPR:Gd:vqsb:B:o:")) != -1) {
+        while ((c = getopt(argc, argv, "AI:LSDMPR:Gd:vqsb:B:o:")) != -1) {
                 switch(c) {
+		case 'I':
+			infile = optarg;
+			break;
 		case 'G':
 			action |= ACT_GEN;
 			break;
@@ -2130,18 +2336,18 @@ main(int argc, char **argv)
 #endif
 	sb = startboard;
 	/* use the rest of the command line as words. */
-	for ( ; optind < argc; optind++) {
+	while ((argstr = getnextarg(argc, argv, &optind)) != NULL) {
 		move_t argmove;
 		char *w;
 		int sc, len;
-		len = strlen(argv[optind]);
+		len = strlen(argstr);
 
 		argmove = emptymove;
-DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
-		rv = parsemove(argv[optind], &argmove, JUSTPLAY);
+DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
+		rv = parsemove(argstr, &argmove, JUSTPLAY);
 
 		if (rv != 0) {
-			vprintf(VNORM, "skipping non-parsable move %s\n", argv[optind]);
+			vprintf(VNORM, "skipping non-parsable move %s\n", argstr);
 			continue;
 		}
 		if (action & ACT_LOOKUP) {
@@ -2150,10 +2356,10 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 			if (rv > 0) {
 				char *filled = strdup(argmove.tiles);
 				l2cstr(argmove.tiles, filled);
-				vprintf(VNORM, "%s matched %d  words\n", argv[optind], rv);
+				vprintf(VNORM, "%s matched %d  words\n", argstr);
 			} else {
 				errs++;
-				vprintf(VNORM, "%s not in dictionary\n", argv[optind]);
+				vprintf(VNORM, "%s not in dictionary\n", argstr);
 			}
 		}
 		if (action & (ACT_SCORE|ACT_MOVE)) {
@@ -2161,9 +2367,9 @@ DBG(DBG_MAIN, "actions %d on arg %d=%s\n", action, optind, argv[optind]);
 				argmove.lcount = movelen(&sb, &argmove, 0);
 			}
 			sc = score2(&argmove, &sb, action&ACT_PLAYTHRU);
-			vprintf(VNORM, "%s scores %d\n", argv[optind], sc);
+			vprintf(VNORM, "%s scores %d\n", argstr, sc);
 			if (action&ACT_MOVE) {
-makemove4(&sb, &argmove, action&ACT_PLAYTHRU, 0);
+makemove5(&sb, &argmove, action&ACT_PLAYTHRU, 0);
 				VERB(VNOISY, "results of move:\n") {
 					showboard(sb, B_TILES);
 					showboard(sb, B_HMLS);
@@ -2181,15 +2387,15 @@ makemove4(&sb, &argmove, action&ACT_PLAYTHRU, 0);
 			strcpy(r.tiles, argmove.tiles);
 			argmove.tiles[0] = '\0';
 			qsort(r.tiles, strlen(r.tiles), 1, lcmp);
-			vprintf(VNORM, "Possible moves for %s:\n", argv[optind]);
+			vprintf(VNORM, "Possible moves for %s:\n", argstr);
 			moves = GoOn2(&sb, &argmove, 0, &r, 0, newsct);
-			vprintf(VNORM, "created %d starting moves from %s\n", moves, argv[optind]);
+			vprintf(VNORM, "created %d starting moves from %s\n", moves, argstr);
 		}
 		if (!errs && action&ACT_ANAGRAM) {
 			if (action & ACT_SCORE) doscore = 1;
-			vprintf(VNORM, "anagrams of %s are:\n", argv[optind]);
+			vprintf(VNORM, "anagrams of %s are:\n", argstr);
 			anas = anagramstr(argmove.tiles, action&ACT_SCORE);
-			vprintf(VNORM, "created %d anagrams of %s\n", anas, argv[optind]);
+			vprintf(VNORM, "created %d anagrams of %s\n", anas, argstr);
 		}
 	}
 

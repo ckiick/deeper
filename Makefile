@@ -1,9 +1,9 @@
 
-
+GIT=/pkg/local/bin/git
 # todo: customize for linux vs solaris. eg: -lrt.
 
-REV := $(shell git rev-list HEAD --count)
-
+REV := $(shell $(GIT) rev-list HEAD --count)
+#REV=41
 
 all:	dict gdexp deeper
 
@@ -14,7 +14,7 @@ clobber:	clean
 	rm -rf ENABLE.* input
 
 deeper:	deeper.c deeper.h
-	gcc -O4 -o deeper deeper.c -lrt
+	gcc -O4 -DREV=$(REV) -o deeper deeper.c -lrt
 
 debug:	deeper.c deeper.h
 	gcc -g -DREV=$(REV) -DDEBUG -o deeper deeper.c -lrt
