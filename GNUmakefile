@@ -5,7 +5,17 @@ GITPATH=/pkg/local/bin:/usr/bin
 REV := $(shell PATH=$(GITPATH) git rev-list HEAD --count)
 #REV=41
 
+
 all:	dict gdexp deeper
+
+deeper:	nondebug
+	cp deeper-nd deeper
+
+debug:	deeper-dbg
+	cp deeper-dbg deeper
+
+nondebug:	deeper-nd
+	cp deeper-nd deeper
 
 clean:
 	rm -rf deeper gdexp mkbitset
@@ -13,11 +23,11 @@ clean:
 clobber:	clean
 	rm -rf ENABLE.* input
 
-deeper:	deeper.c deeper.h
-	gcc -O4 -DREV=$(REV) -o deeper deeper.c -lrt
+deeper-nd:	deeper.c deeper.h
+	gcc -O4 -DREV=$(REV) -o deeper-nd deeper.c -lrt
 
-debug:	deeper.c deeper.h
-	gcc -g -DREV=$(REV) -DDEBUG -o deeper deeper.c -lrt
+deeper-dbg:	deeper.c deeper.h
+	gcc -g -DREV=$(REV) -DDEBUG -o deeper-dbg deeper.c -lrt
 
 gdexp:	gdexp.c
 	gcc -DREV=$(REV) -o gdexp gdexp.c
