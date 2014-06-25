@@ -475,7 +475,7 @@ initstuff()
 	}
 	/* mark all legal start moves */
 	startboard = emptyboard; 	// does this still work? YES.
-	startboard.spaces[STARTR][STARTC].b.f.anchor = 3;
+	startboard.spaces[STARTR][STARTC].b.f.anchor = 2;
 	startboard.spaces[STARTR][STARTC].mbs[M_HORIZ] = ALLPHABITS;
 	startboard.spaces[STARTR][STARTC].mbs[M_VERT] = ALLPHABITS;
 	// init stats
@@ -919,7 +919,8 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 	sct->ttl_ts += sct->ts;
 	sct->ttl_tbs += sct->tbs;
 	sct->ttl_wm *= sct->wm;
-	if ((sct->lms > 0) || (sct->play > 1)) {
+//	if ((sct->lms > 0) || (sct->play > 1)) {
+	if (sct->play > 1) {
 		sct->ttl_xs += sct->wm * (sct->lms + sct->tbs);
 	}
 	if (sct->play) sct->played++;
@@ -1007,7 +1008,10 @@ makemove5(board_t *b, move_t *m, int playthru, int umbs)
 			l = sp->b.f.letter;
 			if (playthru) {
 				if (m->tiles[i] != sp->b.f.letter) {
-vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+					if (m->tiles[i] != DOT) {
+vprintf(VVERB, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+					}
+					m->tiles[i] = sp->b.f.letter;
 				}
 				i--;
 			}
@@ -1045,7 +1049,7 @@ DBG(DBG_MOVE, "moving from %d to %d via %c\n", nid, gc(gaddag[gotol(l,nid)]), l2
 			cr -= dr; cc -= dc;
 			sp = &(b->spaces[cr][cc]);
 			ASSERT(sp->b.f.letter == '\0');
-			sp->b.f.anchor |= m->dir + 1;
+			sp->b.f.anchor |= (1-m->dir)+1;
 			if (nldn(b, cr, cc, m->dir, side)) {
 				/* an unplayed space */
 				sp->b.f.mls[1-m->dir] = tts;
@@ -1115,7 +1119,10 @@ makemove4(board_t *b, move_t *m, int playthru, int umbs)
 			l = sp->b.f.letter;
 			if (playthru) {
 				if (m->tiles[i] != sp->b.f.letter) {
-vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+					if (m->tiles[i] != DOT) {
+vprintf(VVERB, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+					}
+					m->tiles[i] = sp->b.f.letter;
 				}
 				i--;
 			}
@@ -1225,7 +1232,10 @@ DBG(DBG_SCORE,"in score with (%d,%d)->%s lcount=%d strlen=%d, playthru=%d\n", m-
 			/* on a previously played tile */
 			if (playthru) {
 				if (m->tiles[i] != sp->b.f.letter) {
-vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d), skipping\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+					if (m->tiles[i] != DOT) {
+vprintf(VVERB, "warning: playthru %c(%d) doesn't match played %c(%d), replacing\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+					}
+					m->tiles[i] = sp->b.f.letter;
 				}
 				i++;
 			}
@@ -1240,6 +1250,9 @@ vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d), skipping\n
 			sct.wm = sp->b.f.wm;
 			sct.lms = sp->b.f.mls[m->dir];
 			sct.play = 1;
+			if (sp->b.f.anchor & (m->dir + 1)) {
+				sct.play += 1;
+			}
 			i++;
 		}
 		updatescore(&sct);
@@ -1277,7 +1290,7 @@ vprintf(VNORM, "warning: playthru %c(%d) doesn't match played %c(%d), skipping\n
 	}
 
 	if (m->lcount != pcnt) {
-		vprintf(VNORM, "correcting move lcount from %d to %d\n", m->lcount, pcnt);
+		vprintf(VVERB, "correcting move lcount from %d to %d\n", m->lcount, pcnt);
 		m->lcount = pcnt;
 	}
 	return sc;
@@ -1372,9 +1385,13 @@ showboard(board_t b, int what)
 				break;
 			case B_ANCHOR:
 				if (sp->b.f.anchor) {
-					printf(" &  ");
+					printf(" &%d ", sp->b.f.anchor);
 				} else {
-					printf("    ");
+					if (sp->b.f.letter == EMPTY) {
+						printf(" _  ");
+					} else {
+						printf(" %c  ", l2c(sp->b.f.letter));
+					}
 				}
 				break;
 			case B_BONUS:
@@ -1394,7 +1411,7 @@ showboard(board_t b, int what)
 int
 parsemove(char *str, move_t *m, int played)
 {
-	char *cp;
+	char *cp, *dp;
 	int dd = 0;
 	int len, plen;
 	char *word;
@@ -1472,9 +1489,15 @@ DBG(DBG_ARGS, "plen=%d, len=%d, word=%s\n", plen, len, cp);
 	}
 	m->lcount = len;
 	/* now the string. */
+	while ((dp = strchr(cp, '.')) != NULL) {
+		*dp = CDOT;
+	}
 	if (c2lstr(cp, m->tiles, played)) {
 		vprintf(VVERB, "%s had invalid characters\n", cp, len);
 		return 5;
+	}
+	while ((dp = strchr(cp, CDOT)) != NULL) {
+		*dp = '.';
 	}
 	return 0;
 }
@@ -1664,7 +1687,10 @@ DBG(DBG_GOON,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				sct.tbs = b->spaces[currow][curcol].b.f.lm * sct.ts;
 				sct.wm =  b->spaces[currow][curcol].b.f.wm;
 				sct.lms = b->spaces[currow][curcol].b.f.mls[m->dir];
-				sct.play = 1 + b->spaces[currow][curcol].b.f.anchor;
+				sct.play = 1;
+				if ( b->spaces[currow][curcol].b.f.anchor & (m->dir + 1)) {
+					sct.play += 1;
+				}
 			}
 		}
 DBG(DBG_GOON, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
@@ -2209,7 +2235,7 @@ getnextarg(int argc, char **argv, int *optind)
 			perror("read");
 			goto end;
 		} else if (rv != len) {
-			printf("error reading move file, only got %d out of %d bytes\n", rv, len);
+			printf("error reading move file, only got %d out of %d bytes\n", rv, (int)len);
 			len = rv;
 		}
 end:
@@ -2260,6 +2286,7 @@ main(int argc, char **argv)
 	int errs = 0, anas = 0, moves = 0;
 	board_t sb;
 	char *argstr = NULL;
+	int totalscore = 0;
 
         while ((c = getopt(argc, argv, "AI:LSDMPR:Gd:vqsb:B:o:")) != -1) {
                 switch(c) {
@@ -2356,7 +2383,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			if (rv > 0) {
 				char *filled = strdup(argmove.tiles);
 				l2cstr(argmove.tiles, filled);
-				vprintf(VNORM, "%s matched %d  words\n", argstr);
+				vprintf(VNORM, "%s matched %d  words\n", argstr, rv);
 			} else {
 				errs++;
 				vprintf(VNORM, "%s not in dictionary\n", argstr);
@@ -2367,6 +2394,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 				argmove.lcount = movelen(&sb, &argmove, 0);
 			}
 			sc = score2(&argmove, &sb, action&ACT_PLAYTHRU);
+			totalscore += sc;
 			vprintf(VNORM, "%s scores %d\n", argstr, sc);
 			if (action&ACT_MOVE) {
 makemove5(&sb, &argmove, action&ACT_PLAYTHRU, 0);
@@ -2398,6 +2426,8 @@ makemove5(&sb, &argmove, action&ACT_PLAYTHRU, 0);
 			vprintf(VNORM, "created %d anagrams of %s\n", anas, argstr);
 		}
 	}
+	if (totalscore > 0)
+			vprintf(VNORM, "total score is %d\n", totalscore);
 
 	if (errs) {
 		return -errs;

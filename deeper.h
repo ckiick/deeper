@@ -97,6 +97,8 @@ typedef uint32_t bs_t;		// bitset
 #define BB	0x20		// played Blank Bit
 #define MARK	28		// internal place holder
 #define SEP	30		// gaddag seperator, '^' (must be highest)
+#define CDOT	0x7B		// for . in input. replace with }
+#define DOT	59		// for . in move, replace with letters
 
 #if __BYTE_ORDER == 12345
 #define gs(n)	((n)&0x80000000)

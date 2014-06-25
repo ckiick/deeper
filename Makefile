@@ -1,8 +1,8 @@
 
-GIT=/pkg/local/bin/git
+GITPATH=/pkg/local/bin:/usr/bin
 # todo: customize for linux vs solaris. eg: -lrt.
 
-REV := $(shell $(GIT) rev-list HEAD --count)
+REV := $(shell PATH=$(GITPATH) git rev-list HEAD --count)
 #REV=41
 
 all:	dict gdexp deeper
