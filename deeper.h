@@ -54,6 +54,7 @@ typedef uint64_t hrtime_t;
 #define DBG_VERIFY	0x00004000	// show verify output.
 #define DBG_MBS		0x00008000	// move bitset updates
 #define DBG_MOVE	0x00010000	// when making moves
+#define DBG_GREED	0x00020000	// greedy strategy
 #define DBG_DBG		0x40000000	// debugger: debug thyself.
 #define DBG_ALL		0x7FFFFFFF	// extremely noisy
 #define DBG_NONE	0x80000000	// doesn't match anything
@@ -271,8 +272,8 @@ const uint8_t boni[BOARDX][BOARDY] = {
  { TW,  0,  0, DL,  0,  0,  0, TW,  0,  0,  0, DL,  0,  0, TW },   //1
  {  0, DW,  0,  0,  0, TL,  0,  0,  0, TL,  0,  0,  0, DW,  0 },   //2
  {  0,  0, DW,  0,  0,  0, DL,  0, DL,  0,  0,  0, DW,  0,  0 },   //3
- {  0,  0,  0, DW,  0,  0,  0, DL,  0,  0,  0, DW,  0,  0,  0 },   //4
- { DL,  0,  0,  0, DW,  0,  0,  0,  0,  0, DW,  0,  0,  0, DL },   //5
+ { DL,  0,  0, DW,  0,  0,  0, DL,  0,  0,  0, DW,  0,  0, DL },   //4
+ {  0,  0,  0,  0, DW,  0,  0,  0,  0,  0, DW,  0,  0,  0,  0 },   //5
  {  0, TL,  0,  0,  0, TL,  0,  0,  0, TL,  0,  0,  0, TL,  0 },   //6
  {  0,  0, DL,  0,  0,  0, DL,  0, DL,  0,  0,  0, DL,  0,  0 },   //7
  { TW,  0,  0, DL,  0,  0,  0, DW,  0,  0,  0, DL,  0,  0, TW },   //8
