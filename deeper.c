@@ -24,6 +24,8 @@
 #include <strings.h>	// str*
 #include <unistd.h>	// getopt, seek
 #include <ctype.h>	// isupper, etc
+#include <limits.h>	// LONG_MAX
+#include <errno.h>	// errno
 
 #if defined(__sun)
 #include <sys/types.h>
@@ -89,7 +91,7 @@ static const scthingy_t newsct = { 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 };
 
 /* diag, debug and stats */
 int verbose = 0;		// level of info output
-int dflags = 0;			// for DBG statements
+unsigned long dflags = 0;			// for DBG statements
 int stats = 0;			// report stats while running
 char *gcgfn = NULL;		// save result here
 gstats_t globalstats;		// global statistics
@@ -1818,7 +1820,7 @@ DBG(DBG_GOON, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs, 
 }
 		pl = b->spaces[currow][curcol].b.f.letter;
 		if (pl != '\0') {
-DBG(DBG_GEN, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
+DBG(DBG_GOON, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 			w[ndx] = pl;
 			rlp = NULL;
 			curid = gotol(deblank(w[ndx]), nodeid);
@@ -2484,6 +2486,36 @@ end:
 	return NULL;
 }
 
+uint32_t
+parsedbg(char *arg)
+{
+	unsigned long rv; char *p;
+	int i; uint32_t flags = 0;
+	errno = 0;
+	rv = strtoul(arg, &p, 16);
+
+	if ((*p == '\0') && (rv != 0) && (errno == 0)) {
+		flags = rv;
+		return flags;
+	}
+	if (strcasecmp(arg, "all") == 0) {
+		flags = DBG_ALL;
+		return flags;
+	}
+	if (strcasecmp(arg, "none") == 0) {
+		flags = 0;
+		return flags;
+	}
+	for (i = 0; i < 32; i++) {
+		if (! strcasecmp(arg, dbgs[i])) {
+			flags |= 0x1LU << i;
+			return flags;
+		}
+	}
+	vprintf(VNORM, "unknown debug option %s\n", arg);
+	return 0;
+}
+
 #define ACT_LOOKUP	0x001
 #define	ACT_ANAGRAM	0x002
 #define ACT_SCORE	0x004
@@ -2509,7 +2541,7 @@ main(int argc, char **argv)
 	char *argstr = NULL;
 	int totalscore = 0;
 
-        while ((c = getopt(argc, argv, "AI:LSDMPR:GT:d:vqsb:B:o:")) != -1) {
+        while ((c = getopt(argc, argv, "AI:LSD:MPR:GT:d:vqsb:B:o:")) != -1) {
                 switch(c) {
 		case 'T':
 			strat = atoi(optarg);
@@ -2528,7 +2560,8 @@ main(int argc, char **argv)
 			action |= ACT_MOVE;
 			break;
 		case 'D':
-			dflags = DBG_ALL;
+			dflags |= parsedbg(optarg);
+DBG(DBG_DBG, "set dflags to 0x%lX\n", dflags);
 			break;
 		case 'L':
 			action |= ACT_LOOKUP;

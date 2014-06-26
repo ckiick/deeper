@@ -59,6 +59,34 @@ typedef uint64_t hrtime_t;
 #define DBG_ALL		0x7FFFFFFF	// extremely noisy
 #define DBG_NONE	0x80000000	// doesn't match anything
 
+#define DBG_MAX_NAME	20
+
+char dbgs[32][DBG_MAX_NAME] = {
+	"main",		//DBG_MAIN	0x00000001
+	"dict",		//DBG_DICT	0x00000002
+	"init",		//DBG_INIT	0x00000004
+	"bag",		//DBG_BAG	0x00000008
+	"stats",	//DBG_STATS	0x00000010
+	"ana",		//DBG_ANA	0x00000020
+	"look",		//DBG_LOOK	0x00000040
+	"score",	//DBG_SCORE	0x00000080
+	"mls",		//DBG_MLS	0x00000100
+	"args",		//DBG_ARGS	0x00000200
+	"rack",		//DBG_RACK	0x00000400
+	"goon",		//DBG_GOON	0x00000800
+	"gen",		//DBG_GEN	0x00001000
+	"match",	//DBG_MATCH	0x00002000
+	"verify",	//DBG_VERIFY	0x00004000
+	"mbs",		//DBG_MBS	0x00008000
+	"move",		//DBG_MOVE	0x00010000
+	"greed",	//DBG_GREED	0x00020000
+	"","","","","","","","","","","","",
+	"dbg",		//DBG_DBG	0x40000000
+	"none"		//DBG_NONE	0x80000000
+};
+
+
+
 /* revisit: wrap or otherwise mangle to avoid syntax error in stmts. */
 #define vprintf(lvl, fmt, ...) \
 	if (verbose >= (lvl)) printf(fmt, ##__VA_ARGS__)
