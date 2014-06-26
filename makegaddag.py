@@ -171,6 +171,10 @@ class Dawg:
                 self.minimizedNodes[child] = child;
             self.uncheckedNodes.pop()
 
+    def dumproot( self ):
+	self.root.__dmp__()
+
+
     def lookup( self, word ):
         node = self.root
         for letter in word:
@@ -257,14 +261,14 @@ print "Read %d words into %d nodes and %d edges" % ( WordCount,
         dawg.nodeCount(), EdgeCount )
 #print "This could be stored in as little as %d bytes" % (EdgeCount * 4)    
 
-#print "indexing... "
-#dawg.makeIndex()
-#print "done"
+print "indexing... "
+dawg.makeIndex()
+print "done"
 
-#print "dumping..."
-#df = open("makegaddag.dump", "wt")
-#dawg.dump()
-#print "...done"
+print "dumping..."
+df = open("makegaddag.dump", "wt")
+dawg.dump()
+print "...done"
 
 print "compressing to binary gaddag..."
 bincount = dawg.reindex(dawg.root)
@@ -273,8 +277,19 @@ dawg.dobin()
 print "compressed %d arcs to %d bytes\n" % (bincount, bincount*4)
 print "...done"
 
-#print "spewing..."
-#sf = open("makegaddag.spew", "wt")
-#dawg.spew()
-#print "...done"
+print "spewing..."
+sf = open("makegaddag.spew", "wt")
+dawg.spew()
+print "...done"
 
+print "looking up stuff "
+QUERY=["FOZY", "YZOF", "FOZYNG", "GNYZOF"]
+
+for word in QUERY:
+    if not dawg.lookup( word ):
+        print "%s not in dictionary." % word
+    else:
+        print "%s is in the dictionary." % word
+
+
+print "root node is %s." % dawg.dumproot()
