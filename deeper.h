@@ -122,6 +122,9 @@ char coltags[BOARDX+1] = "ABCDEFGHIJKLMNO";
 typedef uint32_t gn_t;		// gaddag node
 typedef uint32_t bs_t;		// bitset
 
+#define	ROOTID	1		// everything in gaddag starts here...
+#define	NULLID	0		// and ends here.
+
 #define UBLANK	27		// unplayed blank (Z+1) '['
 #define BB	0x20		// played Blank Bit
 #define MARK	28		// internal place holder
@@ -382,3 +385,45 @@ typedef struct _scthingy {
 	short wm;		/* this spaces word multiplier */
 	short play;	/* 1 if this is a tile, 0 if playing through */
 } scthingy_t;
+
+
+/* constants derived from outside the program used in verify. */
+/* data file constants.*/
+#define	TWOLW	96	// number of two letter words
+#define	THREELW	972	// number of three letter words
+#define	FOURLW	3903	// four
+#define FIVELW	8636
+#define	SIXLW	15232
+#define	SEVENLW	23109
+#define	EIGHTLW	28420
+#define NINELW	24873
+#define	TENLW	20300
+#define WORDS	172820		// total words in lexicon.
+#define	GDWORDS	1570508		// total gaddagized words
+#define	GDBYTES	3498340		// total size of binary gaddag file
+#define	FIRSTW	"AA"		// first word in dict
+#define	LASTW	"ZYZZYVAS"	// last word in dict
+#define LASTGD	"Z^YZZYVAS"	// last word in gaddagized list.
+#define	LWL	15		// longest word length
+#define	LW	"ABSORBABILITIES"	// longest word(always 15)
+
+/* board and bag */
+#define	B_TTLWM	((15*15)+(2*8)+17)	// sum of all word multipliers
+#define	B_TTLLM	((15*15)+(2*8)+24)	// sum of all letter multipliers
+#define BAG_TTL	((2*10)+(2*8)+(1*5)+(10*4)+(7*3)+(6*2)+(30))	// sum of tiles
+
+/* scores. Not necessarily words */
+#define SC_LOWW	"D9:AA"		// lowest scoring word (non-blank)
+#define	SC_LOWS	2
+#define	SC_HIW	"A1:ZZZZZZZZZZZZZZZ"	// highest solo word scorer
+#define SC_HIS	(((15*10)+(2*10))*3*3*3)
+
+#define	R_LOWL	"AAAEEEI"	// lowest scoring rack, letters
+#define R_LOWS	7
+#define R_HIL	"ZQJXKWW"	// hi
+#define R_HIS	49
+
+/* what else? */
+
+
+

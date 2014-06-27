@@ -104,10 +104,6 @@ int strat = 0;		// move choosing strategy.
 /* job/process control */
 int globaldone = 0;		// set to stop all threads.
 
-
-/* fast inline functions. */
-
-
 void
 usage(char *me)
 {
@@ -153,7 +149,6 @@ lstr2bs(letter_t *lstr)
 	return bs;
 }
 
-
 /*
  * convert character string cstr to a letter string lstr. detects invalid
  * characters.  Returns number of invalid characters, but does conversion
@@ -190,7 +185,6 @@ c2lstr(char *cstr, char *lstr, int played)
 		return 0;
 	}
 }
-
 
 /* force chars to upper case. must be UNPLAYED */
 inline int
@@ -559,7 +553,6 @@ printnode(char *msg, uint32_t nid)
 gs(gaddag[nid])?'$': ' ', gf(gaddag[nid])? '.': ' ',l?l2c(l):' ',l );
 }
 
-
 /*
  * a compare function for a letter versus a gaddag-letter.
  * 0 = a match.
@@ -577,7 +570,7 @@ cmplgl(letter_t l, letter_t g)
 }
 
 /* given a letter, find corresponding nodeid in nid.
- * we can assume that the bit for l is set.
+ * we can assume that the bit for l is set. (Maybe not).
  * NOTE: can't optimize by assuming uint32_t << 32 == 0.  it's not.
  */
 inline int
@@ -744,7 +737,6 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 	b->spaces[row][col].mbs[1-dir] = fbs;
 }
 
-
 /*
  * match iterator: non-recursive iteration function for letters against
  * gaddag edges.  Re-entrant and state savable.
@@ -864,7 +856,7 @@ anagramstr(letter_t *letters, int doscore)
 	DBG(DBG_ANA, "let the recursion begin on\n") {
 		printlstr(lset); printf("\n");
 	}
-	return doanagram_d(0, sofar, 0, lset);
+	return doanagram_d(1, sofar, 0, lset);
 }
 
 /* lookup using match iterator.
@@ -1670,6 +1662,7 @@ DBG(DBG_GREED, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos,
 				sepid = gotol(SEP, cid);
 DBG(DBG_GREED, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
+				if (cid == 0) continue;
 DBG(DBG_GREED, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
 	printf(" - word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
@@ -1714,7 +1707,7 @@ ceo(board_t *gb)
 DBG(DBG_GREED, "getting greedy at %d, %d with rack ", gm.row, gm.col) {
 	printlstr(r.tiles); printf("\n");
 }
-	maxm = greedy(gb, &gm, 0, &r, 0, newsct);
+	maxm = greedy(gb, &gm, 0, &r, 1, newsct);
 	makemove5(gb, &maxm, 1, 0);
 	totalscore = maxm.score;
 
@@ -1741,7 +1734,7 @@ VERB(VNOISY, "ceo ") {
 DBG(DBG_GREED, "getting greedy at %d, %d with rack ", gm.row, gm.col) {
 	printlstr(r.tiles); printf("\n");
 }
-					m = greedy(gb, &gm, 0, &r, 0, newsct);
+					m = greedy(gb, &gm, 0, &r, 1, newsct);
 					if (m.score > maxm.score) {
 						maxm = m;
 					}
@@ -1976,46 +1969,46 @@ verify()
 	}
 	/* some test cases for mi. */
 	{
-		char w[16] = ""; int nid = 0; int cid = -1; int i = 0;
+		char w[16] = ""; int nid = 1; int cid = -1; int i = 0;
 		int rv;
 
 		/* simple match. */
-		c2lstr("A", w, 0); nid=0;cid=-1;i=0;
+		c2lstr("A", w, 0); nid=1;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('A')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* skip dup letters. */
-		c2lstr("XXXXX", w, 0); nid=0;cid=-1;i=0;
+		c2lstr("XXXXX", w, 0); nid=1;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('X')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* skip mark */
-		c2lstr("\\B", w, 0); nid=0;cid=-1;i=0;
+		c2lstr("\\B", w, 0); nid=1;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('B')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* skip multiple marks */
-		c2lstr("\\\\\\B\\\\\\", w, 0); nid=0;cid=-1;i=0;
+		c2lstr("\\\\\\B\\\\\\", w, 0); nid=1;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('B')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* match ^ */
-		c2lstr("^", w, 0); nid=26;cid=-1;i=0;
+		c2lstr("^", w, 0); nid=27;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('^')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* match ^ at end */	
-		c2lstr("J^", w, 0); nid=26;cid=-1;i=0;
+		c2lstr("J^", w, 0); nid=27;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('J')));
 		rv = mi(w, nid, &i, &cid);
@@ -2024,26 +2017,26 @@ verify()
 		ASSERT(rv == 0);
 
 		/* singleton letter in node set */
-		c2lstr("K", w, 0); nid=121;cid=-1;i=0;
+		c2lstr("K", w, 0); nid=122;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('K')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* singleton letter, no match */
-		c2lstr("JL", w, 0); nid=121;cid=-1;i=0;
+		c2lstr("JL", w, 0); nid=122;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* singleton, blank. */
-		c2lstr("JL?", w, 0); nid=121;cid=-1;i=0;
+		c2lstr("JL?", w, 0); nid=122;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('k')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* singleton ^, match */
-		c2lstr("M^", w, 0); nid=52;cid=-1;i=0;
+		c2lstr("M^", w, 0); nid=53;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 VERB(VNOISY, "verify mi: rv=%d, i=%d, cid=%d  ", rv, i, cid) {
 printlstr(w); printf(" %c %d \n", l2c(w[0]), w[0]);  
@@ -2053,24 +2046,24 @@ printlstr(w); printf(" %c %d \n", l2c(w[0]), w[0]);
 		ASSERT(rv == 0);
 
 		/* singleton ^, no match */
-		c2lstr("Z", w, 0); nid=52;cid=-1;i=0;
+		c2lstr("Z", w, 0); nid=53;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* singleton ^, no match with blank */
-		c2lstr("A?", w, 0); nid=52;cid=-1;i=0;
+		c2lstr("A?", w, 0); nid=53;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* singleton ^, match with blank */
-		c2lstr("A?^", w, 0); nid=52;cid=-1;i=0;
+		c2lstr("A?^", w, 0); nid=53;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('^')));
 		rv = mi(w, nid, &i, &cid);
 		ASSERT(rv == 0);
 
 		/* match two. */
-		c2lstr("AB", w, 0); nid=0;cid=-1;i=0;
+		c2lstr("AB", w, 0); nid=1;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('A')));
 		rv = mi(w, nid, &i, &cid);
@@ -2079,7 +2072,7 @@ printlstr(w); printf(" %c %d \n", l2c(w[0]), w[0]);
 		ASSERT(rv == 0);
 
 		/* match two with gap */
-		c2lstr("CH", w, 0); nid=53;cid=-1;i=0;
+		c2lstr("CH", w, 0); nid=54;cid=-1;i=0;
 		rv = mi(w, nid, &i, &cid);
 		ASSERT( (rv != 0) && (w[i] == c2l('C')));
 		rv = mi(w, nid, &i, &cid);
@@ -2163,11 +2156,11 @@ printlstr(tm.tiles); printf("\n");
 		/* finals. */
 		int nid; int bs;
 
-		nid =0; bs = 0;
+		nid =1; bs = 0;
 		bs = finals(nid);
 vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		ASSERT(bs == 0);
-		nid =125; bs = 0;
+		nid =126; bs = 0;
 		bs = finals(nid);
 vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		ASSERT(bs == 1);
@@ -2637,7 +2630,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			continue;
 		}
 		if (action & ACT_LOOKUP) {
-			rv = m_lookup(argmove.lcount, argmove.tiles, 0);
+			rv = m_lookup(argmove.lcount, argmove.tiles, 1);
 			if (rv > 0) {
 				char *filled = strdup(argmove.tiles);
 				l2cstr(argmove.tiles, filled);
@@ -2678,7 +2671,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			argmove.tiles[0] = '\0';
 			qsort(r.tiles, strlen(r.tiles), 1, lcmp);
 			vprintf(VNORM, "Possible moves for %s:\n", argstr);
-			moves = GoOn2(&sb, &argmove, 0, &r, 0, newsct);
+			moves = GoOn2(&sb, &argmove, 0, &r, 1, newsct);
 			vprintf(VNORM, "created %d starting moves from %s\n", moves, argstr);
 		}
 	} /* end while args */
