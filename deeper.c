@@ -2409,6 +2409,7 @@ VERB(VVERB, "rv=%d for %d,%d %s pt=%d tiles=", rv, tm.row, tm.col, tm.dir == M_H
 		}
 		ASSERT(rv == ((15*15*4) - (4*15)));
 	}
+	vprintf(VVERB, "finished verify!\n");
 }
 #endif /* DEBUG */
 
