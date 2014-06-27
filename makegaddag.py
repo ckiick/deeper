@@ -172,7 +172,7 @@ class Dawg:
             self.uncheckedNodes.pop()
 
     def dumproot( self ):
-	self.root.__dmp__()
+	return self.root.__dmp__()
 
 
     def lookup( self, word ):
@@ -227,8 +227,14 @@ class Dawg:
 
 	return DawgNode.NewNdx
 
+    def barf( self ):
+        yf.write(self.root.__str__() + "\n")
+        for node in self.minimizedNodes:
+            yf.write(node.__str__() + "\n")
+
 
     def dump( self ):
+        df.write(self.root.__dmp__() + "\n")
         for node in self.minimizedNodes:
             df.write(node.__dmp__() + "\n")
 
@@ -270,6 +276,11 @@ df = open("makegaddag.dump", "wt")
 dawg.dump()
 print "...done"
 
+print "barfing..."
+yf = open("makegaddag.barf", "wt")
+dawg.barf()
+print "....done"
+
 print "compressing to binary gaddag..."
 bincount = dawg.reindex(dawg.root)
 bf = open(BINFILE, "wt")
@@ -283,7 +294,7 @@ dawg.spew()
 print "...done"
 
 print "looking up stuff "
-QUERY=["FOZY", "YZOF", "FOZYNG", "GNYZOF"]
+QUERY=["FOZY", "YZOF", "FOZYNG", "GNFOZY", "NGFOZY", "YZOFNG", "YZOFGN"]
 
 for word in QUERY:
     if not dawg.lookup( word ):
