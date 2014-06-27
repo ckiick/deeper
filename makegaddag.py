@@ -12,13 +12,10 @@ if len(sys.argv) > 1:
 else:
     DICTIONARY = "words.txt"
 
-
 if len(sys.argv) > 2:
     BINFILE = sys.argv[2]
 else:
     BINFILE = "makegaddag.bin"
-
-#QUERY = sys.argv[1:]
 
 # This class represents a node in the directed acyclic word graph (DAWG). It
 # has a list of edges to other nodes. It has functions for testing whether it
@@ -27,7 +24,7 @@ else:
 # __eq__ functions allow it to be used as a key in a python dictionary.
 class DawgNode:
     NextId = 0
-    NextNdx = 0
+    NextNdx = 1
     NewNdx = 0
 
     def __init__(self):
@@ -110,6 +107,11 @@ class Arc:
 class Dawg:
     def __init__(self):
         self.previousWord = ""
+	# nullnode must be all 0s, so do it first.
+	self.nullnode = DawgNode()
+	self.nullnode.index = 0
+        self.nullnode.arcindex = 0
+
         self.root = DawgNode()
 	self.queue = deque()
 
@@ -174,7 +176,6 @@ class Dawg:
     def dumproot( self ):
 	return self.root.__dmp__()
 
-
     def lookup( self, word ):
         node = self.root
         for letter in word:
@@ -198,15 +199,33 @@ class Dawg:
 		node = self.queue.popleft()
 		if node.index != -1: continue
         	node.index = DawgNode.NextNdx
-        	DawgNode.NextNdx += len(node.edges)
+		litter = len(node.edges);
+		if litter == 0 : continue
+        	DawgNode.NextNdx += litter
 		for l in sorted(node.edges.keys()):
 			self.queue.append(node.edges[l])
 	print str(DawgNode.NextNdx)
 
     def reindex ( self, node ):
+	if (DawgNode.NewNdx == 0):
+	    nullarc = Arc()
+	    nullarc.index = 0
+	    nullarc.cindex = 0
+	    nullarc.letter = '\0'
+	    nullarc.nodeid = 0
+	    nullarc.eow = True
+	    nullarc.eos = True
+	    nullarc.cid = 0
+	    self.indexed.append(nullarc)
+	    DawgNode.NewNdx = 1
+
 	if (node.arcindex != -1): return
 	n = DawgNode.NewNdx
 	letters = sorted(node.edges.keys())
+	if (len(node.edges) == 0):
+	    node.arcindex = 0
+	    return
+
 	for i, l in enumerate(letters):
 	    newarc = Arc()
 	    newarc.index = n + i
@@ -271,15 +290,15 @@ print "indexing... "
 dawg.makeIndex()
 print "done"
 
-print "dumping..."
-df = open("makegaddag.dump", "wt")
-dawg.dump()
-print "...done"
+#print "dumping..."
+#df = open("makegaddag.dump", "wt")
+#dawg.dump()
+#print "...done"
 
-print "barfing..."
-yf = open("makegaddag.barf", "wt")
-dawg.barf()
-print "....done"
+#print "barfing..."
+#yf = open("makegaddag.barf", "wt")
+#dawg.barf()
+#print "....done"
 
 print "compressing to binary gaddag..."
 bincount = dawg.reindex(dawg.root)
@@ -288,10 +307,10 @@ dawg.dobin()
 print "compressed %d arcs to %d bytes\n" % (bincount, bincount*4)
 print "...done"
 
-print "spewing..."
-sf = open("makegaddag.spew", "wt")
-dawg.spew()
-print "...done"
+#print "spewing..."
+#sf = open("makegaddag.spew", "wt")
+#dawg.spew()
+#print "...done"
 
 print "looking up stuff "
 QUERY=["FOZY", "YZOF", "FOZYNG", "GNFOZY", "NGFOZY", "YZOFNG", "YZOFGN"]
@@ -302,5 +321,4 @@ for word in QUERY:
     else:
         print "%s is in the dictionary." % word
 
-
-print "root node is %s." % dawg.dumproot()
+#print "root node is %s." % dawg.dumproot()
