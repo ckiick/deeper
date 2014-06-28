@@ -398,9 +398,9 @@ typedef struct _scthingy {
 #define	EIGHTLW	28420
 #define NINELW	24873
 #define	TENLW	20300
-#define WORDS	172820		// total words in lexicon.
-#define	GDWORDS	1570508		// total gaddagized words
-#define	GDBYTES	3498340		// total size of binary gaddag file
+#define WORDS	168548		// total words in lexicon.
+#define	GDWORDS	1497509		// total gaddagized words
+#define	GDBYTES	3347316		// total size of binary gaddag file
 #define	FIRSTW	"AA"		// first word in dict
 #define	LASTW	"ZYZZYVAS"	// last word in dict
 #define LASTGD	"Z^YZZYVAS"	// last word in gaddagized list.
@@ -413,15 +413,21 @@ typedef struct _scthingy {
 #define BAG_TTL	((2*10)+(2*8)+(1*5)+(10*4)+(7*3)+(6*2)+(30))	// sum of tiles
 
 /* scores. Not necessarily words */
-#define SC_LOWW	"D9:AA"		// lowest scoring word (non-blank)
-#define	SC_LOWS	2
-#define	SC_HIW	"A1:ZZZZZZZZZZZZZZZ"	// highest solo word scorer
-#define SC_HIS	(((15*10)+(2*10))*3*3*3)
+#define SC_LOWL	"AA"		// lowest scoring word (non-blank)
+#define SC_LOWR	8
+#define SC_LOWC	3
+#define	SC_LOS	2
+#define	SC_HIWL	"ZZZZZZZZZZZZZZZ"	// highest solo word scorer
+#define SC_HIWR 0
+#define SC_HIWC 0
+#define SC_HIS	(((15*10)+(2*10))*3*3*3 + 50)
 
 #define	R_LOWL	"AAAEEEI"	// lowest scoring rack, letters
 #define R_LOWS	7
 #define R_HIL	"ZQJXKWW"	// hi
 #define R_HIS	49
+
+#define ATOZANA	34816	// anagrams of alphabet.
 
 /* what else? */
 

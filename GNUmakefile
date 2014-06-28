@@ -35,7 +35,7 @@ gdexp:	gdexp.c
 dict:	ENABLE.gaddag  ENABLE.bitset
 
 ENABLE.TXT:	Lexicon.txt
-	dos2unix Lexicon.txt | tr '[a-z]' '[A-Z]' | grep -v '.\{16\}' > ENABLE.TXT
+	dos2unix < Lexicon.txt | tr '[a-z]' '[A-Z]' | grep -v '.\{16\}' > ENABLE.TXT
 	wc -l ENABLE.TXT
 
 ENABLE.SEP.TXT:	gaddagize ENABLE.TXT

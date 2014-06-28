@@ -107,24 +107,24 @@ int globaldone = 0;		// set to stop all threads.
 void
 usage(char *me)
 {
-	VERB(VNORM, "usage: %s [-DALSMvqs][-d dict][-b bag][-B letters][-R letters][-o name] moves...", me) {
+	VERB(VNORM, "usage: %s [-LASMGPvqs][-d dict][-b bag][-B letters][-R letters][-o name][-I file][-D bits|word] moves...", me) {
 		printf(
 	"\t-L: lookup args in dictionary\n"
 	"\t-A: print all anagrams of args\n"
 	"\t-S: score arg as if played on empty board\n"
 	"\t-M: make the starting move with args, display results\n"
-	"\t-D: turn on all debug flags (for now)\n"
-	"\t-R letters: use (up to 7) letters as initial rack\n"
 	"\t-G: generate list of moves using args\n"
 	"\t-P: set playthru mode for moves\n"
+	"\t-D [bits|word] turn on specified debug flags\n"
+	"\t-R letters: use (up to 7) letters as initial rack\n"
 	"\t-I file: read moves from input file\n"
-	"\t-d name: use name.gaddag as dictionary. [default=ENABLE]\n"
 	"\t-v: increase verbosity level\n"
 	"\t-q: no messages, only return values. Cancels -v.\n"
+	"\t-s: collect and report statistics. Use twice for more.\n"
+	"\t-d name: use name.gaddag as dictionary. [default=ENABLE]\n"
 	"\t-b [?]A-Z|name: Set bag name. A-Z are built-in, ?=randomize.\n"
 	"\t-B tiles: set bag to string of tiles (A-Z or ? for blank.)\n"
 	"\t-o name: save best move to name.gcg\n"
-	"\t-s: collect and report statistics. Use twice for more.\n"
 	"\t args = rc:word or cr:word, r=1-15, c=A-O, word is 1-7 letters.\n"
 	"\t        If rc is omitted, uses starting position of 8H.\n"
 	"\t        Put row (number) first for horizontal moves. Use lowercase\n"
@@ -753,6 +753,10 @@ int
 mi(letter_t *s, int nodeid, int *i, int *curid)
 {
 	int reenter = 1;
+
+	if ((*curid == 0) || (nodeid == 0)){
+		return 0;
+	}
 DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
 	printlstr(s);
 	if (*curid >= 0)
@@ -1935,6 +1939,11 @@ DBG(DBG_GOON, "no SEP at nid %d\n", cid);
 void
 verify()
 {
+	int savev = verbose;
+	/* normally verify is quiet. */
+	if (verbose <= VNORM) {
+		verbose = VSHH;
+	}
 	/* basic struct tests */
 	{
 		space_t tsp;
@@ -1953,10 +1962,13 @@ verify()
 	/* test emptyboard. assure symmetry */
 	{
 		int i,j;
+		int sumwm = 0, sumlm = 0;
 		board_t tb = emptyboard;
 
 		for (i=0;i<BOARDY;i++) {
 			for (j=0;j<BOARDX;j++) {
+				sumwm += tb.spaces[i][j].b.f.wm;
+				sumwm += tb.spaces[i][j].b.f.lm;
 				ASSERT(tb.spaces[i][j].b.f.lm == tb.spaces[i][MAXR-j].b.f.lm);
 				ASSERT(tb.spaces[i][j].b.f.lm == tb.spaces[MAXR-i][MAXC-j].b.f.lm);
 				ASSERT(tb.spaces[i][j].b.f.lm == tb.spaces[MAXR-i][j].b.f.lm);
@@ -1966,6 +1978,8 @@ verify()
 
 			}
 		}
+		ASSERT(sumwm = B_TTLWM);
+		ASSERT(sumlm = B_TTLLM);
 	}
 	/* some test cases for mi. */
 	{
@@ -2269,9 +2283,11 @@ vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		/* score. simple cases, only 1 word */
 		move_t tm; board_t tb = emptyboard; int pt = 0; int rv;
 		int i, j, sum1, sum2;
+		char ts[16];
 
 		sum1 = 0;  sum2 = 0;
-		strcpy(tm.tiles,"ZAP"); tm.row=0; tm.col = 0; tm.dir= M_HORIZ;
+		strcpy(ts,"ZAP");
+		c2lstr(ts, tm.tiles, 0); tm.row=0; tm.col = 0; tm.dir= M_HORIZ;
 		tm.lcount = 3;
 		for (i=0; i < 13; i++) {
 			for (j = 0; j<13; j++) {
@@ -2283,6 +2299,17 @@ vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		}
 		ASSERT(sum1 == sum2);
 
+		strcpy(ts, SC_LOWL);
+		c2lstr(ts, tm.tiles, 0); tm.row=SC_LOWR; tm.col = SC_LOWC;
+		tm.dir= M_HORIZ; tm.lcount = 2;
+		rv = score2(&tm, &tb, 1);
+		ASSERT(rv == SC_LOS);
+		strcpy(ts, SC_HIWL);
+		c2lstr(ts, tm.tiles, 0); tm.row=SC_HIWR; tm.col = SC_HIWC;
+		tm.dir= M_HORIZ; tm.lcount = 15;
+		rv = score2(&tm, &tb, 1);
+vprintf(VVERB, "%s at %d,%d (dir=%d) scores %d\n",ts, tm.row, tm.col, tm.dir, rv);
+		ASSERT(rv == SC_HIS);
 	}
 	{
 		/* movelen */
@@ -2408,6 +2435,90 @@ VERB(VVERB, "rv=%d for %d,%d %s pt=%d tiles=", rv, tm.row, tm.col, tm.dir == M_H
 			}
 		}
 		ASSERT(rv == ((15*15*4) - (4*15)));
+	}
+	{
+		/* other constants */
+		ASSERT(g_cnt == GDBYTES / 4);
+		// more later.
+	}
+	{
+		/* lookup */
+		char tw[25]; char tlw[25]; int l; int nid; int rv;
+
+		strcpy(tw, "AA"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tlw, nid);
+		ASSERT(rv == 1);
+
+		strcpy(tw, "??"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tlw, nid);
+		ASSERT(rv == TWOLW);
+		strcpy(tw, "???"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == THREELW);
+		strcpy(tw, "????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == FOURLW);
+		strcpy(tw, "?????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == FIVELW);
+		strcpy(tw, "??????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == SIXLW);
+		strcpy(tw, "???????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == SEVENLW);
+		strcpy(tw, "????????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == EIGHTLW);
+		strcpy(tw, "?????????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == NINELW);
+		strcpy(tw, "??????????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
+		rv = m_lookup(l, tw, nid);
+		ASSERT(rv == TENLW);
+	}
+	{
+		/* anagram */
+		char tw[25]; char tl[25]; int rv;
+
+		strcpy(tw, "AA"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == 1);
+		strcpy(tw, "PLY"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == 1);
+		strcpy(tw, "LETTERS"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == 76);
+		strcpy(tw, "LETTERS"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == 76);
+		strcpy(tw, "??"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == TWOLW);
+		strcpy(tw, "???"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == (TWOLW + THREELW));
+		strcpy(tw, "??????"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == (TWOLW + THREELW + FOURLW + FIVELW + SIXLW));
+		strcpy(tw, "??????????"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == (TWOLW + THREELW + FOURLW + FIVELW + SIXLW + SEVENLW + EIGHTLW +NINELW + TENLW));
+		strcpy(tw, "ZZZ"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == 0);
+		strcpy(tw, "ANAGRAM"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == 39);
+		strcpy(tw, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"); c2lstr(tw, tl, 0);
+		rv = anagramstr(tl, 0);
+		ASSERT(rv == ATOZANA);
+		
+	}
+
+	if (verbose != savev) {
+		verbose = savev;
 	}
 	vprintf(VVERB, "finished verify!\n");
 }
