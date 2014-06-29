@@ -396,7 +396,7 @@ fillrack(rack_t *r, bag_t b, int *bagpos)
 	}
 
 	for (i=0; i < 7; i++) {
-		if ((r->tiles[i] != '\0') || (r->tiles[i] != MARK)) {
+		if ((r->tiles[i] == '\0') || (r->tiles[i] == MARK)) {
 			r->tiles[i] = b[*bagpos];
 			*bagpos += 1; cnt++;
 		}
@@ -404,16 +404,36 @@ fillrack(rack_t *r, bag_t b, int *bagpos)
 			break;
 		}
 	}
-	r->tiles[i+1] = '\0';
-DBG(DBG_RACK, "filled %d tiles to make ", cnt) {
+	//r->tiles[i+1] = '\0';
+DBG(DBG_RACK, "bag now at %d, filled %d tiles to make ", *bagpos, cnt) {
 	printlstr(r->tiles); printf("\n");
 }
 	return cnt;
 }
 
 
-/* initialize a bunch of things. 0 = success. */
+/* remove a letter from the rack */
+void
+pluckrack(rack_t *r, letter_t l)
+{
+	char *lp;
+
+	if (is_pblank(l)) l = UBLANK;
+	lp = strchr(r->tiles, l);
+	if (lp != NULL) {
+		*lp = MARK;
+	} else {
+		VERB(VVERB, "Missing letter %c from rack\n", l2c(l)) {
+			printlstr(r->tiles); printf("\n");
+		}
+	}
+	VERB(VNOISY, "Plucked rack now ") {
+		printlstr(r->tiles); printf("\n");
+	}
+}
+
 int
+/* initialize a bunch of things. 0 = success. */
 initstuff()
 {
 	int r, c;
@@ -955,6 +975,31 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 	sct->ts = 0; sct->tbs = 0; sct->wm=1; sct->lms = 0; sct->play = 0;
 }
 
+/* handle leftover letters after end of game. */
+int
+unbonus(rack_t *r, bag_t bag, int bagpos)
+{
+	int tval = 0;
+	int i, j = 0;
+	while (bagpos < baglen) {
+		tval += lval(bag[bagpos]);
+		bagpos += 1;
+	}
+	for (i = 0; i < 7; i++) {
+		if (r->tiles[i] == '\0') break;
+		if (r->tiles[i] == MARK) {
+			r->tiles[i] = '\0';
+			continue;
+		}
+		tval += lval(r->tiles[i]);
+		/* squeeze to end */
+		r->tiles[j] = r->tiles[i];
+		j++;
+	}
+	r->tiles[i] = '\0';
+	return tval;
+}
+
 /*
  * given a score thingy, tell me what the current score is.
  * called when the final bit is hit.
@@ -978,6 +1023,122 @@ DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%
 
 int updatembs(board_t *b, int dir,  int r, int c, letter_t L);
 
+/* mm6: while making move, remove letters from rack.
+ */
+int
+makemove6(board_t *b, move_t *m, int playthru, int umbs, rack_t *r)
+{
+	int cr, cc, dr, dc, ts, i, tts, er, ec;
+	space_t *sp;
+	letter_t l;
+	bs_t fbs;
+	int side;
+	int len = 0;
+
+	dr = m->dir;
+	dc = 1 - m->dir;
+	tts = 0;
+	int nid = 1;
+	int wlen = 0;
+
+	/* start at the end of the word. */
+	i = strlen(m->tiles);
+	if (i == 0) { return 0; }	// an empty play. (not legal)
+	if (playthru) {
+		wlen = i;
+	} else {
+//		if ((m->lcount == 0) && umbs && !playthru) {
+//			fixlen(b, m, 0);
+//		}
+		wlen = m->lcount;
+	}
+	cr = m->row;
+	cc = m->col;
+	if (m->dir == M_HORIZ) {
+		cc += wlen;
+	} else {
+		cr += wlen;
+	}
+	i--;		// cc/cr actualy points 1 past.
+	er = cr - dr;
+	ec = cc - dc;
+
+	/* part A: going "backwards" */
+	do {
+		cr-=dr; cc-=dc;
+		sp = &(b->spaces[cr][cc]);
+		if (sp->b.f.letter == '\0') {
+			int rv;
+			/* place tile */
+			ASSERT(i >= 0);
+			l = m->tiles[i];
+			if (! umbs) updatemls(b, m->dir, cr, cc, lval(l));
+			if (! umbs) updatembs(b, m->dir, cr, cc, l);
+			if (! umbs) pluckrack(r, l);
+			sp->b.f.letter = m->tiles[i];
+			sp->b.f.anchor = 0;
+			i--;
+		} else {
+			l = sp->b.f.letter;
+			if (playthru) {
+				if (m->tiles[i] != sp->b.f.letter) {
+					if (m->tiles[i] != DOT) {
+vprintf(VVERB, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+					}
+					m->tiles[i] = sp->b.f.letter;
+				}
+				i--;
+			}
+		}
+		ts = lval(l);
+		tts += ts;
+DBG(DBG_MOVE, "moving from %d to %d via %c\n", nid, gc(gaddag[gotol(l,nid)]), l2c(l));
+		nid = gotol(l, nid);
+		nid = gc(gaddag[nid]);
+	} while ( (cr > m->row) || (cc > m->col));
+
+	/* we are at first letter in word. nid is with us. */
+	/* either at edge of board, or there's a space before this one */
+	/* sp should still point to first letter */
+	/* we should also be out of tiles in the move */
+	ASSERT(nldn(b, cr, cc, m->dir, -1));
+	ASSERT((cr == m->row) && (cc == m->col));
+	ASSERT(i < 0);
+	for (side = -1; side <= 1; side +=2) {
+		if (side == 1) {
+			dc *= -side; dr *= -side;
+			cr = er; cc = ec;
+			sp = &(b->spaces[er][ec]);
+			/* cross the SEP. If no SEP, the mbs is empty. */
+			if (SEPBIT & bitset[nid]) {
+				nid = gotol(SEP, nid);
+				nid = gc(gaddag[nid]);
+			} else {
+				nid = -1;
+			}
+		}
+		if (isroom(cr, cc, m->dir, side)) {
+			/* stash sum under first letter */
+			sp->b.f.mls[1-m->dir] = tts;
+			cr -= dr; cc -= dc;
+			sp = &(b->spaces[cr][cc]);
+			ASSERT(sp->b.f.letter == '\0');
+			sp->b.f.anchor |= (1-m->dir)+1;
+			if (nldn(b, cr, cc, m->dir, side)) {
+				/* an unplayed space */
+				sp->b.f.mls[1-m->dir] = tts;
+				sp->mbs[1-m->dir] = finals(nid);
+DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, tts, finals(nid), nid);
+			} else {
+				/* it's a bridge space */
+				dobridge(b, nid, cr, cc, m->dir, side);
+				sp->b.f.mls[1-m->dir] = tts + b->spaces[cr-dr][cc-dc].b.f.mls[1-m->dir];
+			}
+		}
+	}
+	return 1;
+}
+
 /* mm5 is like mm4, but it does not rely on lcount to find the word size.
  */
 int
@@ -993,7 +1154,7 @@ makemove5(board_t *b, move_t *m, int playthru, int umbs)
 	dr = m->dir;
 	dc = 1 - m->dir;
 	tts = 0;
-	int nid = 0;
+	int nid = 1;
 	int wlen = 0;
 
 	/* start at the end of the word. */
@@ -1092,7 +1253,6 @@ DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, 
 	}
 	return 1;
 }
-
 /* use mm4, so we are slightly recursive.
  * returns 1 IFF there are actually any cross tiles.
  */
@@ -1116,7 +1276,7 @@ DBG(DBG_MBS, "at %d,%d dir=%d, for %c\n", r, c, dir, l2c(L));
 DBG(DBG_MBS, "calling mm4 with move %d,%d, dir=%d, lcount=%d\n", um.row, um.col, um.dir, um.lcount);
 	b->spaces[r][c].b.f.letter = '\0';
 	fixlen(b, &um, 0);
-	makemove5(b, &um, 0, 1);
+	makemove6(b, &um, 0, 1, NULL);
 	b->spaces[r][c].b.f.letter = L;
 	return (um.lcount);
 }
@@ -1496,7 +1656,7 @@ printmove(move_t *m, int rev)
 		revnstr(m->tiles, rev);
 	}
 	if (m->score > 0) {
-		printf(" scores %d", m->score);
+		printf(" %d", m->score);
 	}
 	printf("\n");
 }
@@ -1544,14 +1704,14 @@ DBG(DBG_GREED, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 	if (pos > 0) {
 		side = 1;
 		prelen = pos;
-		curcol += ndx * m->dir;
-		currow += ndx * (1 - m->dir);
+		currow += ndx * m->dir;
+		curcol += ndx * (1 - m->dir);
 	} else {
 		side = -1;
 		prelen = ndx + 1;
 	}
 	/* if NOT first, don't redo anchors */
-DBG(DBG_GREED, "time to prune, anchor=%d\n", b->spaces[currow][curcol].b.f.anchor);
+DBG(DBG_GREED, "time to prune, ndx =%d anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 	if ((ndx > 0) && b->spaces[currow][curcol].b.f.anchor) {
 		return maxm;
 	}
@@ -1565,14 +1725,19 @@ DBG(DBG_GREED, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs,
 		pl = b->spaces[currow][curcol].b.f.letter;
 		if (pl != '\0') {
 DBG(DBG_GREED, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
-			w[ndx] = pl;
-			rlp = NULL;
-			curid = gotol(deblank(w[ndx]), nodeid);
-			sct.ts = lval(pl);
-			sct.tbs = sct.ts;
-			sct.wm = 1;
-			sct.play = 0;
-			sct.lms = 1;
+			/* make sure we are still on the path */
+			if (bitset[nodeid] & l2b(pl)) {
+				w[ndx] = pl;
+				rlp = NULL;
+				curid = gotol(deblank(w[ndx]), nodeid);
+				sct.ts = lval(pl);
+				sct.tbs = sct.ts;
+				sct.wm = 1;
+				sct.play = 0;
+				sct.lms = 1;
+			} else {
+				break;
+			}
 		} else {
 			if (curid == -1) {
 				rbs = lstr2bs(r->tiles);
@@ -1580,19 +1745,19 @@ DBG(DBG_GREED, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 				curid = nodeid;
 				if (bl) bs = ALLPHABITS & bitset[nodeid];
 				else bs = rbs & bitset[nodeid];
-				if (b->spaces[currow][curcol].b.f.anchor) {
+				if (b->spaces[currow][curcol].b.f.anchor & (1+m->dir)) {
 					bs &= b->spaces[currow][curcol].mbs[m->dir];
 				}
-DBG(DBG_GREED, "first bl=%x, rbs=%x, id=%d, bs=%x\n", bl, rbs, nodeid, bs);
+DBG(DBG_GREED, "first (%d,%d)/%d bl=%x, rbs=%x, id=%d, bitset=%x mbs=%x bs=%x\n", currow, curcol, m->dir, bl, rbs, nodeid, bitset[nodeid], b->spaces[currow][curcol].mbs[m->dir], bs);
 			} else {
 				if (bl) *rlp = UBLANK;
 				else *rlp = w[ndx];
-DBG(DBG_GREED, "Pop %c at %d back to\n", l2c(w[ndx]), ndx);
+DBG(DBG_GREED, "Pop %c at %d back to rack\n", l2c(w[ndx]), ndx);
 			}
 			if ((bs == 0) && (bl)) {
 				bl = 0;
 				bs = rbs & bitset[nodeid];
-				if (b->spaces[currow][curcol].b.f.anchor) {
+				if (b->spaces[currow][curcol].b.f.anchor & (1+m->dir)) {
 					bs &= b->spaces[currow][curcol].mbs[m->dir];
 				}
 				curid = nodeid;
@@ -1628,6 +1793,8 @@ DBG(DBG_GREED, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) 
 }
 		if (gf(gaddag[curid])) {
 			if (nldn(b, currow, curcol, m->dir, side)) {
+/* here is where we have trouble. Check the other end. */
+if ((pos > 0) || (nldn(b, currow + ndx * m->dir, curcol + ndx * (1 - m->dir), m->dir, 1))) {
 				m->score = finalscore(sct);
 				VERB(VVERB, "") {
 					printmove(m, pos);
@@ -1636,6 +1803,7 @@ DBG(DBG_GREED, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) 
 					maxm = *m;
 					fixmove(&maxm, pos);
 				}
+}
 			}
 		}
 		cid = gc(gaddag[curid]);
@@ -1683,6 +1851,7 @@ DBG(DBG_GREED, "no room! no room! at %d %d dir=%d\n", currow, curcol, m->dir);
 DBG(DBG_GREED, "no SEP at nid %d\n", cid);
 		}
 	}
+	w[ndx] = '\0';
 
 	DBG(DBG_GREED, "max move at level %d is ", ndx) {
 		printmove(&maxm, pos);
@@ -1696,13 +1865,14 @@ DBG(DBG_GREED, "no SEP at nid %d\n", cid);
 int
 ceo(board_t *gb)
 {
-	int row, col, mcnt = 0;
+	int dir, row, col, mcnt = 1;
 	int bagpos = 0;
 	move_t m = emptymove;
 	move_t maxm = emptymove;
 	move_t gm = emptymove;
 	rack_t r = emptyrack;
 	int totalscore = 0;
+	int subscore = 0;
 
 	gm.row = STARTR; gm.col = STARTC;
 	fillrack(&r, globalbag, &bagpos);
@@ -1712,14 +1882,17 @@ DBG(DBG_GREED, "getting greedy at %d, %d with rack ", gm.row, gm.col) {
 	printlstr(r.tiles); printf("\n");
 }
 	maxm = greedy(gb, &gm, 0, &r, 1, newsct);
-	makemove5(gb, &maxm, 1, 0);
+	makemove6(gb, &maxm, 1, 0, &r);
 	totalscore = maxm.score;
 
 	while (strlen(maxm.tiles) > 0) {
+VERB(VNORM, "%d:", mcnt) {
+	printmove(&maxm, -1);
+}
 VERB(VVERB,"ceo ") {
 	showboard(*gb, B_TILES);
 }
-VERB(VNOISY, "ceo ") {
+VERB(VVERB, "ceo ") {
 	showboard(*gb, B_ANCHOR);
 	showboard(*gb, B_HMLS);
 	showboard(*gb, B_VMLS);
@@ -1730,27 +1903,37 @@ VERB(VNOISY, "ceo ") {
 		maxm = emptymove;
 		fillrack(&r, globalbag, &bagpos);
 		qsort(r.tiles, strlen(r.tiles), 1, lcmp);
-		for (row = 0; row < BOARDY; row++) {
-			for (col = 0; col < BOARDX; col++) {
-				if (gb->spaces[row][col].b.f.anchor) {
-					gm = emptymove;
-					gm.row = row; gm.col=col;
-DBG(DBG_GREED, "getting greedy at %d, %d with rack ", gm.row, gm.col) {
-	printlstr(r.tiles); printf("\n");
-}
-					m = greedy(gb, &gm, 0, &r, 1, newsct);
-					if (m.score > maxm.score) {
-						maxm = m;
+		for (dir = 0; dir < 2; dir++) {
+			for (row = 0; row < BOARDY; row++) {
+				for (col = 0; col < BOARDX; col++) {
+					if (gb->spaces[row][col].b.f.anchor) {
+						gm = emptymove; gm.dir=dir;
+						gm.row = row; gm.col=col;
+	DBG(DBG_GREED, "getting greedy at %d, %d with rack ", gm.row, gm.col) {
+		printlstr(r.tiles); printf("\n");
+	}
+						m = greedy(gb, &gm, 0, &r, 1, newsct);
+						if (m.score > maxm.score) {
+							maxm = m;
+						}
 					}
 				}
 			}
 		}
 		totalscore += maxm.score;
-VERB(VVERB, "greediest move for move %d is ", mcnt) {
-	printmove(&maxm, -1);
-}
-		makemove5(gb, &maxm, 1, 0);
+
+		makemove6(gb, &maxm, 1, 0, &r);
 	}
+	/* correct for leftover letters. */
+	subscore = unbonus(&r, globalbag, bagpos);
+	if (subscore > 0) {
+		VERB(VNORM, "LEFT: ") {
+			printlstr(r.tiles);
+			printf(" -%d", subscore);
+		}
+		totalscore -= subscore;
+	}
+
 	/* and that's the game, dude. */
 	return totalscore;
 }
@@ -1941,7 +2124,7 @@ verify()
 {
 	int savev = verbose;
 	/* normally verify is quiet. */
-	if (verbose <= VNORM) {
+	if (verbose <= VNOISY) {
 		verbose = VSHH;
 	}
 	/* basic struct tests */
@@ -2757,7 +2940,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			anas = anagramstr(argmove.tiles, action&ACT_SCORE);
 			vprintf(VNORM, "created %d anagrams of %s\n", anas, argstr);
 		}
-		if (action & ACT_SCORE) {
+		if (action == ACT_SCORE) {
 			if (! action & ACT_PLAYTHRU) {
 				argmove.lcount = movelen(&sb, &argmove, 0);
 			}
