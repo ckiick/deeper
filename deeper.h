@@ -49,7 +49,7 @@ typedef uint64_t hrtime_t;
 #define DBG_ARGS	0x00000200	// parsing and stuff
 #define DBG_RACK	0x00000400	// rack parsing and handling
 #define DBG_GOON	0x00000800	// first cut at movegen
-#define DBG_GEN		0x00001000	// other half of movegen
+#define DBG_GEN		0x00001000	// genall
 #define DBG_MATCH	0x00002000	// match (iterator)
 #define DBG_VERIFY	0x00004000	// show verify output.
 #define DBG_MBS		0x00008000	// move bitset updates

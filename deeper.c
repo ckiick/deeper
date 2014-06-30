@@ -637,6 +637,7 @@ finals(int nid)
 inline int
 isroom(int r, int c, int dir, int side)
 {
+// printf("isroom %d,%d, dir=%d, side=%d\n", r, c, dir, side);
 	if (dir == M_HORIZ) {
 		if (((side < 0) && (c > 0)) || ((side > 0) && (c < 14)))
 			return 1;
@@ -1497,7 +1498,7 @@ printmove(move_t *m, int rev)
  * other few items are stack items.
  */
 
-#define MAXMVS	512		/* mvs array. expand as needed. */
+#define MAXMVS	2048	/* mvs array. expand as needed. */
 
 typedef struct _gendata {
 	board_t *b;
@@ -1508,14 +1509,11 @@ typedef struct _gendata {
 } gendata_t;
 
 int
-genall(gendata_t *gd, int pos, int nodeid, scthingy_t sct)
+genallat(gendata_t *gd, int pos, int nodeid, scthingy_t sct)
 {
 	board_t *b = gd->b;
 	move_t *m = gd->m;
 	rack_t *r = gd->r;
-	int nodeid = gd->nodeid;
-	int pos = gd->pos;
-	scthingy_t sct = gd->sct;
 
 	int movecnt = 0;
 	int curid = -1;
@@ -1539,7 +1537,7 @@ genall(gendata_t *gd, int pos, int nodeid, scthingy_t sct)
 	int ve = (ac-7)/7;
 	int he = (ar-7)/7;
 
-DBG(DBG_GREED, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
+DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), ar,ac,pos, nodeid) {
 	printf(" - word=\"");
 	printlstr(w);
 	printf("\", rack=\"");
@@ -1558,20 +1556,20 @@ DBG(DBG_GREED, "at %d,%d(%-d) node=%d", ar,ac,pos, nodeid) {
 		prelen = ndx + 1;
 	}
 	/* if NOT first, don't redo anchors */
-DBG(DBG_GREED, "time to prune, ndx =%d anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
+DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 	if ((ndx > 0) && b->spaces[currow][curcol].b.f.anchor) {
-		return maxm;
+		return movecnt;
 	}
 
 	w[ndx+1] = '\0';
 
 	while (rlp != NULL) {
-DBG(DBG_GREED, "inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
+DBG(DBG_GEN, "[%d]inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", ndx, rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
 
 }
 		pl = b->spaces[currow][curcol].b.f.letter;
 		if (pl != '\0') {
-DBG(DBG_GREED, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
+DBG(DBG_GEN, "[%d]found %c on board at %d, %d\n", ndx, l2c(pl), currow, curcol);
 			/* make sure we are still on the path */
 			if (bitset[nodeid] & l2b(pl)) {
 				w[ndx] = pl;
@@ -1595,11 +1593,11 @@ DBG(DBG_GREED, "found %c on board at %d, %d\n", l2c(pl), currow, curcol);
 				if (b->spaces[currow][curcol].b.f.anchor & (1+m->dir)) {
 					bs &= b->spaces[currow][curcol].mbs[m->dir];
 				}
-DBG(DBG_GREED, "first (%d,%d)/%d bl=%x, rbs=%x, id=%d, bitset=%x mbs=%x bs=%x\n", currow, curcol, m->dir, bl, rbs, nodeid, bitset[nodeid], b->spaces[currow][curcol].mbs[m->dir], bs);
+DBG(DBG_GEN, "[%d]first (%d,%d)/%d bl=%x, rbs=%x, id=%d, bitset=%x mbs=%x bs=%x\n", ndx, currow, curcol, m->dir, bl, rbs, nodeid, bitset[nodeid], b->spaces[currow][curcol].mbs[m->dir], bs);
 			} else {
 				if (bl) *rlp = UBLANK;
 				else *rlp = w[ndx];
-DBG(DBG_GREED, "Pop %c at %d back to rack\n", l2c(w[ndx]), ndx);
+DBG(DBG_GEN, "[%d] Pop %c back to rack\n", ndx,  l2c(w[ndx]));
 			}
 			if ((bs == 0) && (bl)) {
 				bl = 0;
@@ -1616,7 +1614,7 @@ DBG(DBG_GREED, "Pop %c at %d back to rack\n", l2c(w[ndx]), ndx);
 			} else {
 				pl = nextl(&bs, &curid);
 				ASSERT(pl != 0);
-DBG(DBG_GREED,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
+DBG(DBG_GEN,"[%d]match %c bl=%x, node %d rack=", ndx, l2c(pl),bl, nodeid) {
 	printlstr(r->tiles); printf("\n");
 }
 				if (bl) rlp = strchr(r->tiles, UBLANK);
@@ -1635,7 +1633,7 @@ DBG(DBG_GREED,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
 				}
 			}
 		}
-DBG(DBG_GREED, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
+DBG(DBG_GEN, "[%d]Gen gave id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
 	printlstr(r->tiles); printf("\n");
 }
 		if (gf(gaddag[curid])) {
@@ -1647,64 +1645,92 @@ DBG(DBG_GREED, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) 
 					printmove(m, pos);
 				}
 				/* record play */
-				gd->mvs[gd->mvcnt] = *m;
-				fixmove( &(gd->mvs[gd->mvcnt]), pos);
-				gd->mvcnt++;
+				ASSERT(gd->mvsndx < MAXMVS);
+				gd->mvs[gd->mvsndx] = *m;
+				fixmove( &(gd->mvs[gd->mvsndx]), pos);
+				gd->mvsndx++;
+				movecnt++;
 			    }
 			}
 		}
 		cid = gc(gaddag[curid]);
+//printf("you are here\n");
 		if (isroom(currow, curcol, m->dir, side)) {
 			/* recurse */
-DBG(DBG_GREED, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, cid) {
+DBG(DBG_GEN, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, cid) {
 	printf(" word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
 			if (pos <= 0) {
-				m->col -= 1 - m->dir;
+				m->col -= (1 - m->dir);
 				m->row -= m->dir;
 			}
-			subm = greedy(b, m, pos, r,  cid, sct);
+			movecnt += genallat(gd, pos, cid, sct);
 			if (pos <= 0) {
-				m->col += 1 - m->dir;
+				m->col += (1 - m->dir);
 				m->row += m->dir;
 			}
-			if (subm.score > maxm.score) {
-				maxm = subm;
-			}
-		}
+		} else {
+//printf ("ran out of room %d, %d/ dir=%d, side = %d\n", currow, curcol, m->dir, side);
+}
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
 			if (nldn(b, currow, curcol, m->dir, -1) &&
-				isroom(currow, curcol, m->dir, 1)) {
+				isroom(currow + dr*prelen-1 , curcol + dc*prelen-1, m->dir, 1)) {
 				sepid = gotol(SEP, cid);
-DBG(DBG_GREED, "sep at %d from %d\n", sepid, cid);
+DBG(DBG_GEN, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
 				if (cid == 0) continue;
-DBG(DBG_GREED, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
+DBG(DBG_GEN, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
 	printf(" - word=\""); printlstr(w);
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
-				subm = greedy(b, m, prelen, r, cid, sct);
-				if (subm.score > maxm.score) {
-					maxm = subm;
-				}
+				movecnt += genallat(gd, prelen, cid, sct);
 			} else {
-DBG(DBG_GREED, "no room! no room! at %d %d dir=%d\n", currow, curcol, m->dir);
+DBG(DBG_GEN, "no room! no room! at %d %d dir=%d\n", currow, curcol, m->dir);
 			}
 		} else {
-DBG(DBG_GREED, "no SEP at nid %d\n", cid);
+DBG(DBG_GEN, "no SEP at nid %d\n", cid);
 		}
 	}
 	w[ndx] = '\0';
-
-	DBG(DBG_GREED, "max move at level %d is ", ndx) {
-		printmove(&maxm, pos);
-	}
-	return maxm;
+DBG(DBG_GEN, "[%d] genallat returning %d moves\n", ndx, movecnt);
+	return movecnt;
 }
+
+/* iterates genallat over board. Allocates mvs for us.*/
+int
+genall(gendata_t *gd)
+{
+	int r, c, dir, moves = 0;
+
+	if (gd->mvs == NULL) {
+		gd->mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
+		if (gd->mvs == NULL) {
+			vprintf(VNORM, "ERROR: failed allocate moves array\n");
+			return 0;
+		}
+	}
+	bzero(gd->mvs, sizeof(move_t)*MAXMVS);
+	gd->mvsndx = 0;
+	*(gd->m) = emptymove;
+
+	for (dir = 0; dir < 2; dir++) {
+		for (r = 0; r < BOARDY; r++) {
+			for (c = 0; c < BOARDX; c++) {
+				gd->m->row = r; gd->m->col = c;
+				gd->m->dir = dir;
+				moves += genallat(gd, 0, 1, newsct);
+			}
+		}
+	}
+
+	vprintf(VNORM, "genall made %d total moves\n", moves);
+	return moves;
+}
+
 
 /* greedy strategy move generator: returns the highest scoring move
  * made immediately from rack at given position.
@@ -1874,7 +1900,7 @@ DBG(DBG_GREED, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos,
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
 			if (nldn(b, currow, curcol, m->dir, -1) &&
-				isroom(currow, curcol, m->dir, 1)) {
+				isroom(currow + dr*prelen , curcol + dc*prelen, m->dir, 1)) {
 				sepid = gotol(SEP, cid);
 DBG(DBG_GREED, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
@@ -2137,7 +2163,7 @@ DBG(DBG_GOON, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, 
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
 			if (nldn(b, currow, curcol, m->dir, -1) &&
-				isroom(currow, curcol, m->dir, 1)) {
+				isroom(currow + dr*prelen , curcol + dc*prelen, m->dir, 1)) {
 				sepid = gotol(SEP, cid);
 DBG(DBG_GOON, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
@@ -2856,7 +2882,7 @@ parsedbg(char *arg)
 #define ACT_STRAT	0x040
 
 #define STRAT_GREEDY	1
-#define START_JUMP	2
+#define STRAT_JUMP	2
 #define STRAT_CREEP	3
 
 int
@@ -3005,14 +3031,38 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			}
 		}
 		if (action & ACT_GEN) {
-			/* todo: use -R rack. but what of pos? */
+			gendata_t gds;
 			rack_t r = emptyrack;
 			strcpy(r.tiles, argmove.tiles);
 			argmove.tiles[0] = '\0';
 			qsort(r.tiles, strlen(r.tiles), 1, lcmp);
+			gds.b = &sb;
+			gds.r = &r;
+			gds.m = &argmove;
+/*
+	gds.mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
+	if (gds.mvs == NULL) {
+		vprintf(VNORM, "ERROR: failed allocate moves array\n");
+		continue;
+	}
+	bzero(gds.mvs, sizeof(move_t)*MAXMVS);
+	gds.mvsndx = 0;
+*/
+			moves = genall(&gds);
+			VERB(VVERB, "moves:") {
+				int i;
+				for (i = 0; i< gds.mvsndx; i++) {
+					printmove(&(gds.mvs[i]), -1);
+				}
+			}
+			vprintf(VNORM, "gen %d moves from %s\n", moves, argstr);
+			free(gds.mvs);
+#ifdef OLDGEN
+			/* todo: use -R rack. but what of pos? */
 			vprintf(VNORM, "Possible moves for %s:\n", argstr);
 			moves = GoOn2(&sb, &argmove, 0, &r, 1, newsct);
 			vprintf(VNORM, "created %d starting moves from %s\n", moves, argstr);
+#endif
 		}
 	} /* end while args */
 
