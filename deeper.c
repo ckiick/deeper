@@ -44,7 +44,7 @@
 inline int
 popc(uint32_t w)
 {
-        int c;
+        volatile int c;
         _popc(w,c);
         return c;
 }
@@ -55,7 +55,7 @@ popc(uint32_t w)
 inline int
 ffb(uint32_t w)
 {
-        int c;
+        volatile int c;
         _ffs(w,c);
         return c;
 }
@@ -98,6 +98,7 @@ gstats_t globalstats;		// global statistics
 
 /* other options */
 int doscore = 0;
+int dotimes = 0;	// set if we should time ourselves.
 char *infile = 0;
 int strat = 0;		// move choosing strategy.
 
@@ -600,7 +601,7 @@ inline letter_t
 nextl(bs_t *bs, int *curid)
 {
 	letter_t l;
-	int idbs = bitset[*curid];
+	uint32_t idbs = bitset[*curid];
 
 	l = ffb(*bs);
 	if (l==0) return 0;
@@ -796,7 +797,7 @@ DBG(DBG_ANA, "matched r[%d]=%c from ", i, l2c(rest[i])) {
 		rest[i] = MARK;
 		if (gf(gaddag[curid])) {
 			anas++;
-			VERB(VNORM, "") {
+			VERB(VNORM, " ") {
 				printlrstr(sofar); printf("\n");
 			}
 		}
@@ -859,7 +860,7 @@ DBG(DBG_LOOK, "i=%d, word[i]=%c, nid=%d\n", i, l2c(slw[1]), nodeid);
 DBG(DBG_LOOK, "matched %c(%d) at %d\n", l2c(slw[j]), slw[j], nextid);
 		if ((i == 0) && gf(gaddag[nextid])) {
 			matchcount++;
-			VERB(VNORM, "") {
+			VERB(VNORM, " ") {
 				printlstr(word); printf("\n");
 			}
 		} else {
@@ -1083,6 +1084,56 @@ DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, 
 	return 1;
 }
 
+/* if we can't trust lcount, scan the board to find the actual length.
+ * This function assumes that m->row,col are already correct.
+ */
+int
+movelen(board_t *b, move_t *m, int playthru)
+{
+	int i = strlen(m->tiles);
+	int cr, cc;
+	int len = 0;
+
+	cr = m->row; cc=m->col;
+	while (i > 0) {
+		if (b->spaces[cr][cc].b.f.letter == '\0') {
+			i--;
+			len++;
+		} else {
+			if (playthru) i--;
+			len++;
+		}
+		cc += 1 - m->dir;
+		cr  += m->dir;
+		if ((cr < 0) || (cr >= BOARDY) ||
+		    (cc < 0) || (cc >= BOARDX)) {
+			return len;
+		}
+	}
+	cc -= 1 - m->dir; cr -= m->dir;
+	if (!playthru) {
+		while (!nldn(b, cr, cc, m->dir, 1)) {
+			len++;
+			cc += 1 - m->dir;
+			cr  += m->dir;
+		}
+	}
+	return len;
+}
+
+/* use info on board to set move row, col and lcount.
+ * we can assume we don't have to back over any spaces.
+ */
+void
+fixlen(board_t *b, move_t *m, int playthru)
+{
+	/* first move "back" over letters. */
+	while (!nldn(b, m->row, m->col, m->dir, -1)) {
+		m->col -=(1-m->dir); m->row-=m->dir;
+	}
+	m->lcount = movelen(b, m, playthru);
+}
+
 /* use mm, so we are slightly recursive.
  * returns 1 IFF there are actually any cross tiles.
  */
@@ -1226,7 +1277,7 @@ showboard(board_t b, int what)
 		break;
 	case B_PLAYS:
 		return;
-		break;
+		// break;
 	case B_BONUS:
 		printf("Space bonus values\n");
 		break;
@@ -1400,62 +1451,13 @@ DBG(DBG_ARGS, "plen=%d, len=%d, word=%s\n", plen, len, cp);
 		*dp = CDOT;
 	}
 	if (c2lstr(cp, m->tiles, played)) {
-		vprintf(VVERB, "%s had invalid characters\n", cp, len);
+		vprintf(VVERB, "%s had invalid characters\n", cp);
 		return 5;
 	}
 	while ((dp = strchr(cp, CDOT)) != NULL) {
 		*dp = '.';
 	}
 	return 0;
-}
-
-/* if we can't trust lcount, scan the board to find the actual length.
- * This function assumes that m->row,col are already correct.
- */
-int
-movelen(board_t *b, move_t *m, int playthru)
-{
-	int i = strlen(m->tiles);
-	int cr, cc;
-	int len = 0;
-
-	cr = m->row; cc=m->col;
-	while (i > 0) {
-		if (b->spaces[cr][cc].b.f.letter == '\0') {
-			i--;
-			len++;
-		} else {
-			if (playthru) i--;
-			len++;
-		}
-		cc += 1 - m->dir;
-		cr  += m->dir;
-		if ((cr < 0) || (cr >= BOARDY) ||
-		    (cc < 0) || (cc >= BOARDX)) {
-			return len;
-		}
-	}
-	cc -= 1 - m->dir; cr -= m->dir;
-	if (!playthru) {
-		while (!nldn(b, cr, cc, m->dir, 1)) {
-			len++;
-			cc += 1 - m->dir;
-			cr  += m->dir;
-		}
-	}
-	return len;
-}
-
-/* use info on board to set move row, col and lcount.
- * we can assume we don't have to back over any spaces.
- */
-fixlen(board_t *b, move_t *m, int playthru)
-{
-	/* first move "back" over letters. */
-	while (!nldn(b, m->row, m->col, m->dir, -1)) {
-		m->col -=(1-m->dir); m->row-=m->dir;
-	}
-	m->lcount = movelen(b, m, playthru);
 }
 
 void
@@ -1640,7 +1642,7 @@ DBG(DBG_GEN, "[%d]Gen gave id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
 /* here is where we have trouble. Check the other end. */
 			    if ((pos > 0) || (nldn(b, currow + ndx * m->dir, curcol + ndx * (1 - m->dir), m->dir, 1))) {
 				m->score = finalscore(sct);
-				VERB(VNOISY, "") {
+				VERB(VNOISY, " ") {
 					printmove(m, pos);
 				}
 				/* record play */
@@ -1839,7 +1841,7 @@ DBG(DBG_GREED, "Pop %c at %d back to rack\n", l2c(w[ndx]), ndx);
 			} else {
 				pl = nextl(&bs, &curid);
 				ASSERT(pl != 0);
-DBG(DBG_GREED,"match %c bl=%x, node %d rack=", l2c(pl),bl, nodeid) {
+DBG(DBG_GREED,"match %c bl=%x, node %d curid=%d rack=", l2c(pl),bl, nodeid, curid) {
 	printlstr(r->tiles); printf("\n");
 }
 				if (bl) rlp = strchr(r->tiles, UBLANK);
@@ -1866,7 +1868,7 @@ DBG(DBG_GREED, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) 
 /* here is where we have trouble. Check the other end. */
 if ((pos > 0) || (nldn(b, currow + ndx * m->dir, curcol + ndx * (1 - m->dir), m->dir, 1))) {
 				m->score = finalscore(sct);
-				VERB(VVERB, "") {
+				VERB(VVERB, " ") {
 					printmove(m, pos);
 				}
 				if (m->score > maxm.score) {
@@ -1935,7 +1937,7 @@ int
 veep(gendata_t *gd, int mvcnt)
 {
 	int i;
-	int bigm;
+	int bigm = 0;
 	int maxsc = 0;
 
 	for (i = 0; i < mvcnt; i++) {
@@ -2226,7 +2228,7 @@ DBG(DBG_GOON, "Gen gave n=%d, id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
 				if (doscore) {
 					m->score = finalscore(sct);
 				}
-				VERB(VNORM, "") {
+				VERB(VNORM, " ") {
 					printmove(m, pos);
 				}
 				movecnt++;
@@ -2286,6 +2288,38 @@ verify()
 	if (verbose <= VNOISY) {
 		verbose = VSHH;
 	}
+	{
+		/* ffb and popc */
+		uint32_t v; int rv; int i;
+
+		v = 0x0; rv = ffb(v); ASSERT(rv == 0);
+		v = 0x1; rv = ffb(v); ASSERT(rv == 1);
+		v = 0xFFFFFFFF; rv = ffb(v); ASSERT(rv == 1);
+		v = 0xFFFF0000; rv = ffb(v); ASSERT(rv == 17);
+		v = 0xF0F0F0F0; rv = ffb(v); ASSERT(rv == 5);
+		v = 0x55555555; rv = ffb(v); ASSERT(rv == 1);
+		v = 0xAAAAAAAA; rv = ffb(v); ASSERT(rv == 2);
+		for (i=0; i < 32; i++) {
+			v = 0x01 << i;
+			rv = ffb(v);
+			ASSERT(rv == (i+1));
+		}
+		v = 0x0; rv = popc(v); ASSERT(rv == 0);
+		v = 0x1; rv = popc(v); ASSERT(rv == 1);
+		v = 0xFFFFFFFF; rv = popc(v);
+//printf("popc of %x is %d\n", v, rv);
+// ASSERT(rv == 32);
+		v = 0xFFFF0000; rv = popc(v); ASSERT(rv == 16);
+		v = 0xF0F0F0F0; rv = popc(v); ASSERT(rv == 16);
+		v = 0x55555555; rv = popc(v); ASSERT(rv == 16);
+		v = 0xAAAAAAAA; rv = popc(v); ASSERT(rv == 16);
+		for (i=0; i < 32; i++) {
+			v = 0x01 << i;
+			rv = popc(v);
+			ASSERT(rv == 1);
+		}
+
+	}
 	/* basic struct tests */
 	{
 		space_t tsp;
@@ -2310,7 +2344,7 @@ verify()
 		for (i=0;i<BOARDY;i++) {
 			for (j=0;j<BOARDX;j++) {
 				sumwm += tb.spaces[i][j].b.f.wm;
-				sumwm += tb.spaces[i][j].b.f.lm;
+				sumlm += tb.spaces[i][j].b.f.lm;
 				ASSERT(tb.spaces[i][j].b.f.lm == tb.spaces[i][MAXR-j].b.f.lm);
 				ASSERT(tb.spaces[i][j].b.f.lm == tb.spaces[MAXR-i][MAXC-j].b.f.lm);
 				ASSERT(tb.spaces[i][j].b.f.lm == tb.spaces[MAXR-i][j].b.f.lm);
@@ -2320,8 +2354,8 @@ verify()
 
 			}
 		}
-		ASSERT(sumwm = B_TTLWM);
-		ASSERT(sumlm = B_TTLLM);
+		ASSERT(sumwm == B_TTLWM);
+		ASSERT(sumlm == B_TTLLM);
 	}
 	/* some test cases for mi. */
 	{
@@ -2920,7 +2954,7 @@ end:
 		ap = strtok(NULL, WS);
 		if (ap == NULL) {
 			free(buf);
-			buf == NULL;
+			buf = NULL;
 		} else {
 			return ap;
 		}
@@ -2939,6 +2973,8 @@ parsedbg(char *arg)
 	unsigned long rv; char *p;
 	int i; uint32_t flags = 0;
 	errno = 0;
+
+	if(arg == NULL) return flags;
 	rv = strtoul(arg, &p, 16);
 
 	if ((*p == '\0') && (rv != 0) && (errno == 0)) {
@@ -2988,9 +3024,16 @@ main(int argc, char **argv)
 	board_t sb;
 	char *argstr = NULL;
 	int totalscore = 0;
+	hrtime_t start, end, totaltime;
 
-        while ((c = getopt(argc, argv, "AI:LSD:MPR:GT:d:vqsb:B:o:")) != -1) {
+        while ((c = getopt(argc, argv, "AI:LSD:MPR:GT:d:vqsb:B:o:t")) != -1) {
                 switch(c) {
+		case 't':
+			dotimes = 1;
+#ifdef DEBUG
+vprintf(VNORM, "Warning: -t with DEBUG build: data unreliable.\n");
+#endif
+			break;
 		case 'T':
 			strat = atoi(optarg);
 			action |= ACT_STRAT;
@@ -3047,7 +3090,6 @@ DBG(DBG_DBG, "set dflags to 0x%lX\n", dflags);
 		default:
 			usage(argv[0]);
 			return 1;
-			break;
 		}
 	}
 	/* validate options. */
@@ -3101,7 +3143,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			vprintf(VNORM, "created %d anagrams of %s\n", anas, argstr);
 		}
 		if (action == ACT_SCORE) {
-			if (! action & ACT_PLAYTHRU) {
+			if (! (action & ACT_PLAYTHRU)) {
 				argmove.lcount = movelen(&sb, &argmove, 0);
 			}
 			sc = score2(&argmove, &sb, action&ACT_PLAYTHRU);
@@ -3130,15 +3172,6 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			gds.b = &sb;
 			gds.r = &r;
 			gds.m = &argmove;
-/*
-	gds.mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
-	if (gds.mvs == NULL) {
-		vprintf(VNORM, "ERROR: failed allocate moves array\n");
-		continue;
-	}
-	bzero(gds.mvs, sizeof(move_t)*MAXMVS);
-	gds.mvsndx = 0;
-*/
 			moves = genall(&gds);
 			VERB(VVERB, "moves:") {
 				int i;
@@ -3161,17 +3194,25 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 	if (action&ACT_STRAT) {
 		switch (strat) {
 		case STRAT_GREEDY:
+			if (dotimes) start = gethrtime();
 			totalscore = ceo(&sb);
+			if (dotimes) end = gethrtime();
 			VERB(VVERB, "final board:\n") {
 				showboard(sb, B_TILES);
 			}
 			break;
 		case STRAT_GREED2:
+			if (dotimes) start = gethrtime();
 			totalscore = ceo2(&sb);
+			if (dotimes) end = gethrtime();
 			VERB(VVERB, "final board:\n") {
 				showboard(sb, B_TILES);
 			}
 		}
+	}
+	if (dotimes) {
+		totaltime = end - start;
+vprintf(VNORM, "elapsed time is %lld nsec (%lld sec)\n", totaltime, totaltime/1000000000);
 	}
 	if (totalscore > 0)
 		vprintf(VNORM, "total score is %d\n", totalscore);

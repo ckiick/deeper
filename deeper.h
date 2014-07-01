@@ -409,7 +409,7 @@ typedef struct _scthingy {
 
 /* board and bag */
 #define	B_TTLWM	((15*15)+(2*8)+17)	// sum of all word multipliers
-#define	B_TTLLM	((15*15)+(2*8)+24)	// sum of all letter multipliers
+#define	B_TTLLM	((15*15)+(2*12)+24)	// sum of all letter multipliers
 #define BAG_TTL	((2*10)+(2*8)+(1*5)+(10*4)+(7*3)+(6*2)+(30))	// sum of tiles
 
 /* scores. Not necessarily words */
