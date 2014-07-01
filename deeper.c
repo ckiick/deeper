@@ -1497,8 +1497,7 @@ printmove(move_t *m, int rev)
  * args is large, we use a custom struct that holds needed info. The
  * other few items are stack items.
  */
-
-#define MAXMVS	2048	/* mvs array. expand as needed. */
+#define MAXMVS	4096	/* mvs array. expand as needed. */
 
 typedef struct _gendata {
 	board_t *b;
@@ -1677,7 +1676,7 @@ DBG(DBG_GEN, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, c
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
 			if (nldn(b, currow, curcol, m->dir, -1) &&
-				isroom(currow + dr*prelen-1 , curcol + dc*prelen-1, m->dir, 1)) {
+				isroom(currow + dr*(prelen-1) , curcol + dc*(prelen-1), m->dir, 1)) {
 				sepid = gotol(SEP, cid);
 DBG(DBG_GEN, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
@@ -1720,17 +1719,18 @@ genall(gendata_t *gd)
 	for (dir = 0; dir < 2; dir++) {
 		for (r = 0; r < BOARDY; r++) {
 			for (c = 0; c < BOARDX; c++) {
-				gd->m->row = r; gd->m->col = c;
-				gd->m->dir = dir;
-				moves += genallat(gd, 0, 1, newsct);
+				if (gd->b->spaces[r][c].b.f.anchor) {
+					gd->m->row = r; gd->m->col = c;
+					gd->m->dir = dir;
+					moves += genallat(gd, 0, 1, newsct);
+				}
 			}
 		}
 	}
 
-	vprintf(VNORM, "genall made %d total moves\n", moves);
+	vprintf(VVERB, "genall made %d total moves\n", moves);
 	return moves;
 }
-
 
 /* greedy strategy move generator: returns the highest scoring move
  * made immediately from rack at given position.
@@ -1900,7 +1900,7 @@ DBG(DBG_GREED, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos,
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
 			if (nldn(b, currow, curcol, m->dir, -1) &&
-				isroom(currow + dr*prelen , curcol + dc*prelen, m->dir, 1)) {
+				isroom(currow + dr*(prelen-1), curcol + dc*(prelen-1), m->dir, 1)) {
 				sepid = gotol(SEP, cid);
 DBG(DBG_GREED, "sep at %d from %d\n", sepid, cid);
 				cid = gc(gaddag[sepid]);
@@ -1927,6 +1927,96 @@ DBG(DBG_GREED, "no SEP at nid %d\n", cid);
 		printmove(&maxm, pos);
 	}
 	return maxm;
+}
+
+
+/* like all ceo's the real work is delegated to others. */
+int
+veep(gendata_t *gd, int mvcnt)
+{
+	int i;
+	int bigm;
+	int maxsc = 0;
+
+	for (i = 0; i < mvcnt; i++) {
+		if (gd->mvs[i].score > maxsc) {
+			bigm = i;
+			maxsc = gd->mvs[i].score;
+		}
+	}
+	VERB(VVERB, "biggest score is %d for ", maxsc) {
+		printmove(&(gd->mvs[bigm]), -1);
+	}
+	makemove6(gd->b, &(gd->mvs[bigm]), 1, 0, gd->r);
+	return maxsc;
+}
+
+/* still greedy, but uses genall instead of greedy. 
+ *
+ */
+int
+ceo2(board_t *gb)
+{
+	int totalscore = 0;
+	int subscore;
+	int bagpos = 0;
+	int mvcnt;
+	gendata_t gd;
+	move_t gm = emptymove;
+	rack_t r = emptyrack;
+
+	gd.b = gb;
+	gd.m = &gm;
+	gd.r = &r;
+	gd.mvs = NULL;
+	gd.mvsndx = 0;
+	gd.mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
+	if (gd.mvs == NULL) {
+		vprintf(VNORM, "ERROR: failed allocate moves array\n");
+		return 0;
+	}
+	bzero(gd.mvs, sizeof(move_t)*MAXMVS);
+
+	gm.row = STARTR; gm.col = STARTC;
+	fillrack(&r, globalbag, &bagpos);
+	qsort(r.tiles, strlen(r.tiles), 1, lcmp);
+	/* use genallat for start position. */
+
+DBG(DBG_GREED, "genning all at %d, %d with rack ", gm.row, gm.col) {
+	printlstr(r.tiles); printf("\n");
+}
+	mvcnt = genallat(&gd, 0, 1, newsct);
+
+	while (mvcnt > 0) {
+		totalscore += veep(&gd, mvcnt);
+		VERB(VVERB,"ceo2 ") {
+			showboard(*gb, B_TILES);
+		}
+		VERB(VNOISY, "ceo2 ") {
+			showboard(*gb, B_ANCHOR);
+			showboard(*gb, B_HMLS);
+			showboard(*gb, B_VMLS);
+			showboard(*gb, B_HMBS);
+			showboard(*gb, B_VMBS);
+		}
+		fillrack(&r, globalbag, &bagpos);
+		qsort(r.tiles, strlen(r.tiles), 1, lcmp);
+		gd.mvsndx = 0;
+		bzero(gd.mvs, sizeof(move_t)*MAXMVS);
+		mvcnt = genall(&gd);
+	}
+	/* correct for leftover letters. */
+	subscore = unbonus(&r, globalbag, bagpos);
+	if (subscore > 0) {
+		VERB(VNORM, "LEFT: ") {
+			printlstr(r.tiles);
+			printf(" -%d\n", subscore);
+		}
+		totalscore -= subscore;
+	}
+
+	/* and that's the game, dude. */
+	return totalscore;
 }
 
 /* the ceo uses a short-sighted greedy strategy to maximize his score.
@@ -2882,8 +2972,9 @@ parsedbg(char *arg)
 #define ACT_STRAT	0x040
 
 #define STRAT_GREEDY	1
-#define STRAT_JUMP	2
-#define STRAT_CREEP	3
+#define STRAT_GREED2	2
+#define STRAT_JUMP	3
+#define STRAT_CREEP	4
 
 int
 main(int argc, char **argv)
@@ -3075,6 +3166,11 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 				showboard(sb, B_TILES);
 			}
 			break;
+		case STRAT_GREED2:
+			totalscore = ceo2(&sb);
+			VERB(VVERB, "final board:\n") {
+				showboard(sb, B_TILES);
+			}
 		}
 	}
 	if (totalscore > 0)
