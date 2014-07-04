@@ -86,6 +86,7 @@ static const rack_t emptyrack = { {0,0,0,0,0,0,0,0 } };		// all nulls
 static const move_t emptymove = { 0, 0, 0, 0, 0, 0, { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
 board_t emptyboard;		// no tiles played
 board_t startboard;		// legal start moves marked
+gstats_t nullstats = { 0,0,0,0,0,0,0};	// all 0s
 position_t startp;
 static const scthingy_t newsct = { 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 };
 
@@ -530,26 +531,28 @@ initstuff()
 	globalstats.hiscore = 0;
 
 	/* make up our starting position. */
-	startp.board = startboard;
-	startp.score = 0;
-	startp.bagindex = 0;
-	startp.rack = emptyrack;
-	startp.move = emptymove;
+	startp.b = startboard;
+	startp.sc = 0;
+	startp.bagndx = 0;
+	startp.r = emptyrack;
+	startp.m = emptymove;
 	startp.prev = NULL;
+	startp.next = NULL;
 	startp.state = START;
+	startp.stats = nullstats;
 
 	if (rackstr != NULL) {
 		if (strlen(rackstr) > 7) {
 			vprintf(VNORM, "rack can only have up to 7 letters.\n");
 			return 1;
 		}
-		if (casec2lstr(rackstr, startp.rack.tiles) != 0) {
+		if (casec2lstr(rackstr, startp.r.tiles) != 0) {
 			vprintf(VNORM, "rack string has invalid characters.\n"
 			    "Use only letters and '?' for blank\n");
 			return 1;
 		}
 		DBG(DBG_RACK, "starting with a rack of:") {
-			printlstr(startp.rack.tiles); printf("\n");
+			printlstr(startp.r.tiles); printf("\n");
 		}
 	}
 	return 0;
@@ -1493,6 +1496,7 @@ printmove(move_t *m, int rev)
 	printf("\n");
 }
 
+
 /*
  * genall: this move generator has no strategy. Given board, rack,
  * and move position/dir it finds ALL the moves.  Since the number of
@@ -1501,6 +1505,243 @@ printmove(move_t *m, int rev)
  */
 #define MAXMVS	4096	/* mvs array. expand as needed. */
 
+/* mod to use position_t. */
+int
+genallat_b(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthingy_t sct)
+{
+	board_t *b = &(P->b);
+	move_t *m = &(P->m);
+	rack_t *r = &(P->r);
+
+	int movecnt = 0;
+	int curid = -1;
+	int cid;
+	int sepid;
+ 	letter_t *w = m->tiles;
+	int ac = m->col;
+	int ar = m->row;
+	int ndx = 0;
+	int prelen;
+	int curcol = ac;
+	int currow = ar;
+	char *rlp = (char *)1;
+	bs_t rbs = 0;
+	bs_t bl = 0;
+	bs_t bs = 0;
+	register letter_t pl;
+	int side;
+	int dr = m->dir;
+	int dc = 1 - m->dir;
+	int ve = (ac-7)/7;
+	int he = (ar-7)/7;
+
+DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), ar,ac,pos, nodeid) {
+	printf(" - word=\"");
+	printlstr(w);
+	printf("\", rack=\"");
+	printlstr(r->tiles);
+	printf("\"\n");
+}
+	updatescore(&sct);
+	ndx = strlen(w);	/* depth */
+	if (pos > 0) {
+		side = 1;
+		prelen = pos;
+		currow += ndx * m->dir;
+		curcol += ndx * (1 - m->dir);
+	} else {
+		side = -1;
+		prelen = ndx + 1;
+	}
+	/* if NOT first, don't redo anchors */
+DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
+	if ((ndx > 0) && b->spaces[currow][curcol].b.f.anchor) {
+		return movecnt;
+	}
+
+	w[ndx+1] = '\0';
+
+	while (rlp != NULL) {
+DBG(DBG_GEN, "[%d]inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", ndx, rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
+
+}
+		pl = b->spaces[currow][curcol].b.f.letter;
+		if (pl != '\0') {
+DBG(DBG_GEN, "[%d]found %c on board at %d, %d\n", ndx, l2c(pl), currow, curcol);
+			/* make sure we are still on the path */
+			if (bitset[nodeid] & l2b(pl)) {
+				w[ndx] = pl;
+				rlp = NULL;
+				curid = gotol(deblank(w[ndx]), nodeid);
+				sct.ts = lval(pl);
+				sct.tbs = sct.ts;
+				sct.wm = 1;
+				sct.play = 0;
+				sct.lms = 1;
+			} else {
+				break;
+			}
+		} else {
+			if (curid == -1) {
+				rbs = lstr2bs(r->tiles);
+				if (rbs & UBLBIT) bl = BB;
+				curid = nodeid;
+				if (bl) bs = ALLPHABITS & bitset[nodeid];
+				else bs = rbs & bitset[nodeid];
+				if (b->spaces[currow][curcol].b.f.anchor & (1+m->dir)) {
+					bs &= b->spaces[currow][curcol].mbs[m->dir];
+				}
+DBG(DBG_GEN, "[%d]first (%d,%d)/%d bl=%x, rbs=%x, id=%d, bitset=%x mbs=%x bs=%x\n", ndx, currow, curcol, m->dir, bl, rbs, nodeid, bitset[nodeid], b->spaces[currow][curcol].mbs[m->dir], bs);
+			} else {
+				if (bl) *rlp = UBLANK;
+				else *rlp = w[ndx];
+DBG(DBG_GEN, "[%d] Pop %c back to rack\n", ndx,  l2c(w[ndx]));
+			}
+			if ((bs == 0) && (bl)) {
+				bl = 0;
+				bs = rbs & bitset[nodeid];
+				if (b->spaces[currow][curcol].b.f.anchor & (1+m->dir)) {
+					bs &= b->spaces[currow][curcol].mbs[m->dir];
+				}
+				curid = nodeid;
+			}
+			if (bs == 0) {
+				rlp = NULL;
+				w[ndx] = '\0';
+				break;
+			} else {
+				pl = nextl(&bs, &curid);
+				ASSERT(pl != 0);
+DBG(DBG_GEN,"[%d]match %c bl=%x, node %d rack=", ndx, l2c(pl),bl, nodeid) {
+	printlstr(r->tiles); printf("\n");
+}
+				if (bl) rlp = strchr(r->tiles, UBLANK);
+				else rlp = strchr(r->tiles, pl);
+				ASSERT(rlp != NULL);
+				*rlp = MARK;
+				pl |= bl;
+				w[ndx] = pl;
+				sct.ts = lval(pl);
+				sct.tbs = b->spaces[currow][curcol].b.f.lm * sct.ts;
+				sct.wm =  b->spaces[currow][curcol].b.f.wm;
+				sct.lms = b->spaces[currow][curcol].b.f.mls[m->dir];
+				sct.play = 1;
+				if ( b->spaces[currow][curcol].b.f.anchor & (m->dir + 1)) {
+					sct.play += 1;
+				}
+			}
+		}
+DBG(DBG_GEN, "[%d]Gen gave id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
+	printlstr(r->tiles); printf("\n");
+}
+		if (gf(gaddag[curid])) {
+			if (nldn(b, currow, curcol, m->dir, side)) {
+/* here is where we have trouble. Check the other end. */
+			    if ((pos > 0) || (nldn(b, currow + ndx * m->dir, curcol + ndx * (1 - m->dir), m->dir, 1))) {
+				m->score = finalscore(sct);
+				VERB(VNOISY, " ") {
+					printmove(m, pos);
+				}
+				/* record play */
+				ASSERT(*mvsndx < MAXMVS);
+				mvs[*mvsndx] = *m;
+				fixmove( &(mvs[*mvsndx]), pos);
+				*mvsndx  += 1;
+				movecnt++;
+			    }
+			}
+		}
+		cid = gc(gaddag[curid]);
+//printf("you are here\n");
+		if (isroom(currow, curcol, m->dir, side)) {
+			/* recurse */
+DBG(DBG_GEN, "recurse 1 (%d, %d, %d, word, rack, id=%d)", m->row, m->col, pos, cid) {
+	printf(" word=\""); printlstr(w);
+	printf("\", rack=\""); printlstr(r->tiles);
+	printf("\"\n");
+}
+			if (pos <= 0) {
+				m->col -= (1 - m->dir);
+				m->row -= m->dir;
+			}
+			movecnt += genallat_b(P, mvs, mvsndx, pos, cid, sct);
+			if (pos <= 0) {
+				m->col += (1 - m->dir);
+				m->row += m->dir;
+			}
+		} else {
+//printf ("ran out of room %d, %d/ dir=%d, side = %d\n", currow, curcol, m->dir, side);
+}
+		/* have to handle the ^ */
+		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
+			if (nldn(b, currow, curcol, m->dir, -1) &&
+				isroom(currow + dr*(prelen-1) , curcol + dc*(prelen-1), m->dir, 1)) {
+				sepid = gotol(SEP, cid);
+DBG(DBG_GEN, "sep at %d from %d\n", sepid, cid);
+				cid = gc(gaddag[sepid]);
+				if (cid == 0) continue;
+DBG(DBG_GEN, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
+	printf(" - word=\""); printlstr(w);
+	printf("\", rack=\""); printlstr(r->tiles);
+	printf("\"\n");
+}
+				movecnt += genallat_b(P, mvs, mvsndx, prelen, cid, sct);
+			} else {
+DBG(DBG_GEN, "no room! no room! at %d %d dir=%d\n", currow, curcol, m->dir);
+			}
+		} else {
+DBG(DBG_GEN, "no SEP at nid %d\n", cid);
+		}
+	}
+	w[ndx] = '\0';
+DBG(DBG_GEN, "[%d] genallat returning %d moves\n", ndx, movecnt);
+	return movecnt;
+}
+
+/* iterates genallat over board. Allocates mvs for us.*/
+int
+genall_b(position_t *P, move_t **mvs, int *mvsndx)
+{
+	int r, c, dir, moves = 0;
+
+	if (*mvs == NULL) {
+		*mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
+		if (*mvs == NULL) {
+			vprintf(VNORM, "ERROR: failed allocate moves array\n");
+			return 0;
+		}
+	}
+	bzero(*mvs, sizeof(move_t)*MAXMVS);
+	*mvsndx = 0;
+
+	if (P->sc == -1) {
+		P->sc = 0;
+		P->m.row = STARTR; P->m.col = STARTC; P->m.dir = M_HORIZ;
+		moves = genallat_b(P, *mvs, mvsndx, 0, 1, newsct);
+		vprintf(VVERB, "genall made %d start moves\n", moves);
+		return moves;
+	}
+
+	P->m = emptymove;	
+
+	for (dir = 0; dir < 2; dir++) {
+		for (r = 0; r < BOARDY; r++) {
+			for (c = 0; c < BOARDX; c++) {
+				if (P->b.spaces[r][c].b.f.anchor) {
+					P->m.row = r; P->m.col = c;
+					P->m.dir = dir;
+					
+					moves += genallat_b(P, *mvs, mvsndx, 0, 1, newsct);
+				}
+			}
+		}
+	}
+
+	vprintf(VVERB, "genall made %d total moves\n", moves);
+	return moves;
+}
+
+/* rsds */
 typedef struct _gendata {
 	board_t *b;
 	move_t *m;
@@ -1931,6 +2172,93 @@ DBG(DBG_GREED, "no SEP at nid %d\n", cid);
 	return maxm;
 }
 
+/* mod to use genall_b */
+/* like all ceo's the real work is delegated to others. */
+int
+veep_b(position_t *P, move_t *mvs, int mvcnt)
+{
+	int i;
+	int bigm = 0;
+	int maxsc = 0;
+
+	for (i = 0; i < mvcnt; i++) {
+		if (mvs[i].score > maxsc) {
+			bigm = i;
+			maxsc = mvs[i].score;
+		}
+	}
+	VERB(VVERB, "biggest score is %d for ", maxsc) {
+		printmove(&(mvs[bigm]), -1);
+	}
+	makemove6(&(P->b), &(mvs[bigm]), 1, 0, &(P->r));
+	return maxsc;
+}
+
+/* 
+ * genall_b variant.
+ */
+int
+ceo2_b(board_t *gb)
+{
+	int totalscore = 0;
+	int subscore;
+	int bagpos = 0;
+	int mvcnt;
+	int mvsndx = 0;
+	move_t *mvs = NULL;
+	position_t P = startp;
+
+	mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
+	if (mvs == NULL) {
+		vprintf(VNORM, "ERROR: failed allocate moves array\n");
+		return 0;
+	}
+	bzero(mvs, sizeof(move_t)*MAXMVS);
+
+	P.m.row = STARTR; P.m.col = STARTC;
+	fillrack(&(P.r), globalbag, &(P.bagndx));
+	qsort(P.r.tiles, strlen(P.r.tiles), 1, lcmp);
+	/* use genallat for start position. */
+
+DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
+	printlstr(P.r.tiles); printf("\n");
+}
+	mvcnt = genallat_b(&P, mvs, &mvsndx, 0, 1, newsct);
+
+	while (mvcnt > 0) {
+		totalscore += veep_b(&P, mvs, mvcnt);
+		VERB(VVERB,"ceo2 ") {
+			showboard(P.b, B_TILES);
+		}
+		VERB(VNOISY, "ceo2 ") {
+			showboard(P.b, B_ANCHOR);
+			showboard(P.b, B_HMLS);
+			showboard(P.b, B_VMLS);
+			showboard(P.b, B_HMBS);
+			showboard(P.b, B_VMBS);
+		}
+		fillrack(&(P.r), globalbag, &(P.bagndx));
+		qsort(P.r.tiles, strlen(P.r.tiles), 1, lcmp);
+		mvsndx = 0;
+		bzero(mvs, sizeof(move_t)*MAXMVS);
+		mvcnt = genall_b(&P, &mvs, &mvsndx);
+//		mvcnt = genall(&gd);
+	}
+	/* correct for leftover letters. */
+	subscore = unbonus(&(P.r), globalbag, P.bagndx);
+	if (subscore > 0) {
+		VERB(VNORM, "LEFT: ") {
+			printlstr(P.r.tiles);
+			printf(" -%d\n", subscore);
+		}
+		totalscore -= subscore;
+	}
+
+	/* and that's the game, dude. */
+	*gb = P.b;
+	return totalscore;
+}
+
 
 /* like all ceo's the real work is delegated to others. */
 int
@@ -2048,7 +2376,7 @@ DBG(DBG_GREED, "getting greedy at %d, %d with rack ", gm.row, gm.col) {
 	totalscore = maxm.score;
 
 	while (strlen(maxm.tiles) > 0) {
-VERB(VNORM, "%d:", mcnt) {
+VERB(VVERB, "%d:", mcnt) {
 	printmove(&maxm, -1);
 }
 VERB(VVERB,"ceo ") {
@@ -2275,6 +2603,87 @@ DBG(DBG_GOON, "no SEP at nid %d\n", cid);
 
 	DBG(DBG_GOON, "made %d moves at level %d\n", movecnt, ndx);
 	return movecnt;
+}
+
+/* creep uses lah. while it does us elah, it only does 1 move/iteration.
+*/
+int
+creep(position_t *P) {
+	int score = 0;
+	int totalscore = 0;
+
+	P->sc = -1;
+	score = lah(P, 0, 0);
+
+	while (score >= 0) {
+		P = P->next;
+		totalscore += score;
+		score = lah(P, 0, 0);
+	}
+	return totalscore;
+}
+
+/*
+ * at last. look-ahead. needs to know limit, depth, position.
+ * uses genall.  Greedy when limit is reached.
+ * like other strats, returns score.  If score is <0, game is over.
+ */
+int
+lah(position_t *P, int depth, int limit)
+{
+	int mvcnt = 0;
+	move_t *mvs = NULL;
+	int mvsndx = 0;
+	int score = 0;
+	position_t newP, maxP;
+	int maxsc;
+	int i;
+
+DBG(DBG_LAH, "enter depth=%d limit=%d\n", depth, limit);
+	fillrack(&(P->r), globalbag, &(P->bagndx));
+	qsort(P->r.tiles, strlen(P->r.tiles), 1, lcmp);
+	mvcnt = genall_b(P, &mvs, &mvsndx);
+
+DBG(DBG_LAH, "genall gave %d moves\n",mvcnt);
+	if (mvcnt == 0) {
+		/* there were no more moves. EOG */
+		P->next = NULL;
+		score = unbonus(&(P->r), globalbag, P->bagndx);
+		return -score;
+	}
+	if (depth >= limit) {
+		score = veep_b(P, mvs, mvcnt);
+		P->sc += score;
+		P->next = NULL;
+		return P->sc;
+	}
+	/* still looking ahead. recursive part. */
+	ASSERT(depth < limit);
+	maxP = *P;
+	maxsc = P->sc;
+
+	for (i = 0; i < mvcnt; i++) {
+		newP = *P;
+DBG(DBG_LAH, "recurse with move ") {
+	printmove(&(mvs[i]), -1);
+}
+		makemove6(&(newP.b), &(mvs[i]), 1, 0, &(newP.r));
+		mvsndx = 0;
+		bzero(mvs, sizeof(move_t)*MAXMVS);
+		score = lah(&newP, depth+1, limit);
+		if (score < 0) {
+			/* end of game EOG */
+			newP.sc += score;
+			maxsc = score;
+		} else {
+			if (score > maxsc) {
+				maxP = newP;
+				maxsc = score;
+			}
+		}
+	}
+	*P = maxP;
+	return maxsc;
 }
 
 /* do this later... */
@@ -3009,8 +3418,9 @@ parsedbg(char *arg)
 
 #define STRAT_GREEDY	1
 #define STRAT_GREED2	2
-#define STRAT_JUMP	3
-#define STRAT_CREEP	4
+#define STRAT_GREED2B	3
+#define STRAT_LAH1	4
+#define STRAT_CREEP	5
 
 int
 main(int argc, char **argv)
@@ -3025,6 +3435,7 @@ main(int argc, char **argv)
 	char *argstr = NULL;
 	int totalscore = 0;
 	hrtime_t start, end, totaltime;
+	uint64_t evals = 0;
 
         while ((c = getopt(argc, argv, "AI:LSD:MPR:GT:d:vqsb:B:o:t")) != -1) {
                 switch(c) {
@@ -3208,10 +3619,37 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			VERB(VVERB, "final board:\n") {
 				showboard(sb, B_TILES);
 			}
+			break;
+		case STRAT_GREED2B:
+			if (dotimes) start = gethrtime();
+			totalscore = ceo2_b(&sb);
+			if (dotimes) end = gethrtime();
+			VERB(VVERB, "final board:\n") {
+				showboard(sb, B_TILES);
+			}
+			break;
+		case STRAT_LAH1:
+			startp.sc = -1;
+			if (dotimes) start = gethrtime();
+			totalscore = lah(&startp, 0, 0);
+			if (dotimes) end = gethrtime();
+			VERB(VVERB, "final board:\n") {
+				showboard(startp.b, B_TILES);
+			}
+			break;
+		case STRAT_CREEP:
+			if (dotimes) start = gethrtime();
+			totalscore = creep(&startp);
+			if (dotimes) end = gethrtime();
+			VERB(VVERB, "final board:\n") {
+				showboard(startp.b, B_TILES);
+			}
+			break;
 		}
 	}
 	if (dotimes) {
 		totaltime = end - start;
+		startp.stats.evtime = totaltime;
 vprintf(VNORM, "elapsed time is %lld nsec (%lld sec)\n", totaltime, totaltime/1000000000);
 	}
 	if (totalscore > 0)

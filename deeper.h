@@ -55,6 +55,7 @@ typedef uint64_t hrtime_t;
 #define DBG_MBS		0x00008000	// move bitset updates
 #define DBG_MOVE	0x00010000	// when making moves
 #define DBG_GREED	0x00020000	// greedy strategy
+#define DBG_LAH		0x00040000	// look ahead
 #define DBG_DBG		0x40000000	// debugger: debug thyself.
 #define DBG_ALL		0x7FFFFFFF	// extremely noisy
 #define DBG_NONE	0x80000000	// doesn't match anything
@@ -80,7 +81,8 @@ char dbgs[32][DBG_MAX_NAME] = {
 	"mbs",		//DBG_MBS	0x00008000
 	"move",		//DBG_MOVE	0x00010000
 	"greed",	//DBG_GREED	0x00020000
-	"","","","","","","","","","","","",
+	"lah",		//DBG_LAH	0x00040000
+"","","","","","","","","","","",
 	"dbg",		//DBG_DBG	0x40000000
 	"none"		//DBG_NONE	0x80000000
 };
@@ -349,25 +351,29 @@ typedef enum pstate {
 	FREE		// can be disposed of.
 } pstate_t;
 
-/* position: basically a snapshot of game state. */
-typedef struct Position {
-	board_t	board;		/* current game board, with move played */
-	int score;		/* total of all move scores */
-	int bagindex;		/* aka how many tiles used so far */
-	rack_t rack;		/* what to play with */
-	move_t move;		/* current move */
-	struct Position *prev;	/* points to last position. */
-	pstate_t state;		/* know what we are doing */
-} position_t;
-
 typedef struct Gstats {
 	uint64_t evals;		/* total number of board evaluated */
 	hrtime_t evtime;	/* elapsed eval time, in nsec. */
+	uint64_t moves;		/* total moves generated */
 	int maxdepth;		/* deepest move stack */
 	int maxwidth;		/* move moves for a position */
 	int wordhiscore;	/* highest 1-word score */
 	int hiscore;		/* highest game score so far */
 } gstats_t;
+
+/* position: basically a snapshot of game state. */
+typedef struct Position {
+	board_t	b;		/* current game board, with move played */
+	int sc;			/* total of all move scores */
+	int bagndx;		/* aka how many tiles used so far */
+	rack_t r;		/* what to play with */
+	move_t m;		/* current move */
+	struct Position *prev;	/* points to last position. */
+	struct Position *next;	/* another link in the chain */
+	pstate_t state;		/* know what we are doing */
+	gstats_t stats;		/* for perf and wow factor */
+} position_t;
+
 
 
 /* internal use for keeping running score during movegen. */
