@@ -1718,7 +1718,7 @@ genall_b(position_t *P, move_t **mvs, int *mvsndx)
 		P->sc = 0;
 		P->m.row = STARTR; P->m.col = STARTC; P->m.dir = M_HORIZ;
 		moves = genallat_b(P, *mvs, mvsndx, 0, 1, newsct);
-		vprintf(VVERB, "genall made %d start moves\n", moves);
+DBG(DBG_GEN, "genall made %d start moves\n", moves);
 		return moves;
 	}
 
@@ -1737,7 +1737,7 @@ genall_b(position_t *P, move_t **mvs, int *mvsndx)
 		}
 	}
 
-	vprintf(VVERB, "genall made %d total moves\n", moves);
+DBG(DBG_GEN, "genall made %d total moves\n", moves);
 	return moves;
 }
 
@@ -2187,10 +2187,8 @@ veep_b(position_t *P, move_t *mvs, int mvcnt)
 			maxsc = mvs[i].score;
 		}
 	}
-	VERB(VVERB, "biggest score is %d for ", maxsc) {
-		printmove(&(mvs[bigm]), -1);
-	}
 	makemove6(&(P->b), &(mvs[bigm]), 1, 0, &(P->r));
+	P->m = mvs[bigm];
 	return maxsc;
 }
 
@@ -2227,10 +2225,14 @@ DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 
 	while (mvcnt > 0) {
 		totalscore += veep_b(&P, mvs, mvcnt);
-		VERB(VVERB,"ceo2 ") {
+		P.sc = totalscore;
+		VERB(VVERB, "ceo2b score is %d for ", P.sc) {
+			printmove(&(P.m), -1);
+		}
+		VERB(VVERB,"ceo2b ") {
 			showboard(P.b, B_TILES);
 		}
-		VERB(VNOISY, "ceo2 ") {
+		VERB(VNOISY, "ceo2b ") {
 			showboard(P.b, B_ANCHOR);
 			showboard(P.b, B_HMLS);
 			showboard(P.b, B_VMLS);
@@ -2242,7 +2244,6 @@ DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 		mvsndx = 0;
 		bzero(mvs, sizeof(move_t)*MAXMVS);
 		mvcnt = genall_b(&P, &mvs, &mvsndx);
-//		mvcnt = genall(&gd);
 	}
 	/* correct for leftover letters. */
 	subscore = unbonus(&(P.r), globalbag, P.bagndx);
@@ -2605,28 +2606,28 @@ DBG(DBG_GOON, "no SEP at nid %d\n", cid);
 	return movecnt;
 }
 
-/* creep uses lah. while it does us elah, it only does 1 move/iteration.
+/* creep uses lah, it only does 1 move/iteration.
 */
 int
 creep(position_t *P) {
-	int score = 0;
-	int totalscore = 0;
-
 	P->sc = -1;
-	score = lah(P, 0, 0);
 
-	while (score >= 0) {
-		P = P->next;
-		totalscore += score;
-		score = lah(P, 0, 0);
+	while (lah(P, 0, 0)) {
+
+		VERB(VVERB, "creepy score is %d for ", P->sc) {
+			printmove(&(P->m), -1);
+		}
+DBG(DBG_LAH, "creep score =%d P->next = %p\n",P->sc,  P->next);
 	}
-	return totalscore;
+
+	return P->sc;
 }
 
 /*
  * at last. look-ahead. needs to know limit, depth, position.
  * uses genall.  Greedy when limit is reached.
- * like other strats, returns score.  If score is <0, game is over.
+ * not a strat itself, but used by them (like greedy). 
+ * returns 0 when there are no more moves.
  */
 int
 lah(position_t *P, int depth, int limit)
@@ -2635,9 +2636,9 @@ lah(position_t *P, int depth, int limit)
 	move_t *mvs = NULL;
 	int mvsndx = 0;
 	int score = 0;
-	position_t newP, maxP;
-	int maxsc;
-	int i;
+	position_t newP, *maxP;
+	int maxsc = -1000000;		// lower than any possible score.
+	int i; int rv; int maxrv;
 
 DBG(DBG_LAH, "enter depth=%d limit=%d\n", depth, limit);
 	fillrack(&(P->r), globalbag, &(P->bagndx));
@@ -2647,43 +2648,42 @@ DBG(DBG_LAH, "enter depth=%d limit=%d\n", depth, limit);
 DBG(DBG_LAH, "genall gave %d moves\n",mvcnt);
 	if (mvcnt == 0) {
 		/* there were no more moves. EOG */
+		P->sc -= unbonus(&(P->r), globalbag, P->bagndx);
 		P->next = NULL;
-		score = unbonus(&(P->r), globalbag, P->bagndx);
-		return -score;
+		return 0;
 	}
 	if (depth >= limit) {
-		score = veep_b(P, mvs, mvcnt);
-		P->sc += score;
+		P->sc += veep_b(P, mvs, mvcnt);
 		P->next = NULL;
-		return P->sc;
+		return 1;
 	}
 	/* still looking ahead. recursive part. */
 	ASSERT(depth < limit);
-	maxP = *P;
-	maxsc = P->sc;
+	maxP = malloc(sizeof(position_t));
+	P->next = maxP;
 
 	for (i = 0; i < mvcnt; i++) {
 		newP = *P;
 DBG(DBG_LAH, "recurse with move ") {
 	printmove(&(mvs[i]), -1);
 }
+		newP.m = mvs[i];
 		makemove6(&(newP.b), &(mvs[i]), 1, 0, &(newP.r));
 		mvsndx = 0;
 		bzero(mvs, sizeof(move_t)*MAXMVS);
-		score = lah(&newP, depth+1, limit);
-		if (score < 0) {
-			/* end of game EOG */
-			newP.sc += score;
-			maxsc = score;
-		} else {
-			if (score > maxsc) {
-				maxP = newP;
-				maxsc = score;
-			}
+		rv = lah(&newP, depth+1, limit);
+		if (newP.sc > maxsc) {
+			*maxP = newP;
+			maxsc = newP.sc;
+			maxrv = rv;
 		}
 	}
-	*P = maxP;
-	return maxsc;
+	// in the case where next move is no move, free maxP.
+	if (maxrv == 0) {
+		P->next = NULL;
+		free(maxP);
+	}
+	return 1;
 }
 
 /* do this later... */
