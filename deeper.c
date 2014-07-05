@@ -100,6 +100,7 @@ gstats_t globalstats;		// global statistics
 /* other options */
 int doscore = 0;
 int dotimes = 0;	// set if we should time ourselves.
+int level = 0;		// degree of strategy strength
 char *infile = 0;
 int strat = 0;		// move choosing strategy.
 
@@ -126,11 +127,12 @@ usage(char *me)
 	"\t-n lvl: for progressive strats, use level lvl\n"
 	"\t-b [?]A-Z|name: Set bag name. A-Z are built-in, ?=randomize.\n"
 	"\t-B str: set bag to string of tiles (A-Z or ? for blank.\n");
-	vprintf(VNORM, "    [-D bits|word] [-vqs] [-d dict]\n");
+	vprintf(VNORM, "    [-D bits|word] [-vqts] [-d dict]\n");
 	vprintf(VVERB,
 	"\t-D bits|word turn on specified debug flags\n"
 	"\t-v: increase verbosity level, cumulative\n"
 	"\t-q: no messages, only return values. Cancels -v.\n"
+	"\t-t: time and report operations\n"
 	"\t-s: collect and report statistics. Use twice for more.\n"
 	"\t-d name: use name.gaddag as dictionary. [default=ENABLE]\n");
 	vprintf(VNORM, "    [-o file] [-R str]\n");
@@ -138,7 +140,7 @@ usage(char *me)
 	"\t-o name: save best move to name.gcg\n"
 	"\t-R str: set rack to string of tiles (A-Z or ? for blank.)\n");
 	vprintf(VVERB,
-	"\t move = rc:word or cr:word, r=1-15, c=A-O, word is 1-7 letters.\n"
+	"\t move = rc:word or cr:word, r=1-15, c=A-O, word is 1-15 letters.\n"
 	"\t        If rc is omitted, uses starting position of 8H.\n"
 	"\t        Put row (number) first for horizontal moves. Use lowercase\n"
 	"\t        letter for blank played, '?' for unplayed blank.\n");
@@ -1512,7 +1514,7 @@ printmove(move_t *m, int rev)
  * args is large, we use a custom struct that holds needed info. The
  * other few items are stack items.
  */
-#define MAXMVS	4096	/* mvs array. expand as needed. */
+#define MAXMVS	8192	/* mvs array. expand as needed. */
 
 /* mod to use position_t. */
 int
@@ -2235,7 +2237,7 @@ DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 	while (mvcnt > 0) {
 		totalscore += veep_b(&P, mvs, mvcnt);
 		P.sc = totalscore;
-		VERB(VVERB, "ceo2b score is %d for ", P.sc) {
+		VERB(VNORM, "ceo2b score is %d for ", P.sc) {
 			printmove(&(P.m), -1);
 		}
 		VERB(VVERB,"ceo2b ") {
@@ -2619,14 +2621,22 @@ DBG(DBG_GOON, "no SEP at nid %d\n", cid);
 */
 int
 creep(position_t *P) {
+	int mcnt = 0;
 	P->sc = -1;
 
-	while (lah(P, 0, 0)) {
-
-		VERB(VVERB, "creepy score is %d for ", P->sc) {
+	while (lah(P, 0, level)) {
+		mcnt++;
+		VERB(VNORM, "creepy score is %d for ", P->sc) {
 			printmove(&(P->m), -1);
 		}
-DBG(DBG_LAH, "creep score =%d P->next = %p\n",P->sc,  P->next);
+DBG(DBG_LAH, "creep chain is:") {
+	position_t *cP = P;
+	while (cP != NULL) {
+		printmove(&(cP->m), -1);
+		cP = cP->next;
+	}
+}
+DBG(DBG_LAH, "creep mv %dscore =%d P->next = %p\n",mcnt, P->sc,  P->next);
 	}
 
 	return P->sc;
@@ -2637,6 +2647,7 @@ DBG(DBG_LAH, "creep score =%d P->next = %p\n",P->sc,  P->next);
  * uses genall.  Greedy when limit is reached.
  * not a strat itself, but used by them (like greedy). 
  * returns 0 when there are no more moves.
+ * newP is allocated.
  */
 int
 lah(position_t *P, int depth, int limit)
@@ -2644,55 +2655,69 @@ lah(position_t *P, int depth, int limit)
 	int mvcnt = 0;
 	move_t *mvs = NULL;
 	int mvsndx = 0;
-	int score = 0;
-	position_t newP, *maxP;
+	position_t *newP, maxP, iP;
 	int maxsc = -1000000;		// lower than any possible score.
-	int i; int rv; int maxrv;
+	int i; int rv; int maxrv; int maxi;
 
-DBG(DBG_LAH, "enter depth=%d limit=%d\n", depth, limit);
 	fillrack(&(P->r), globalbag, &(P->bagndx));
 	qsort(P->r.tiles, strlen(P->r.tiles), 1, lcmp);
+DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
+	printlstr(P->r.tiles); printf("\n");
+}
 	mvcnt = genall_b(P, &mvs, &mvsndx);
 
-DBG(DBG_LAH, "genall gave %d moves\n",mvcnt);
+DBG(DBG_LAH, "[%d]genall gave %d moves\n",depth, mvcnt);
 	if (mvcnt == 0) {
 		/* there were no more moves. EOG */
 		P->sc -= unbonus(&(P->r), globalbag, P->bagndx);
 		P->next = NULL;
+		free(mvs); mvsndx = 0;
 		return 0;
 	}
 	if (depth >= limit) {
 		P->sc += veep_b(P, mvs, mvcnt);
 		P->next = NULL;
+		free(mvs); mvsndx = 0;
+DBG(DBG_LAH, "[%d]veep found move =", depth) {
+	printmove(&(P->m), -1);
+}
 		return 1;
 	}
 	/* still looking ahead. recursive part. */
 	ASSERT(depth < limit);
-	maxP = malloc(sizeof(position_t));
-	P->next = maxP;
+	newP = malloc(sizeof(position_t));
+	P->next = newP;
 
 	for (i = 0; i < mvcnt; i++) {
-		newP = *P;
-DBG(DBG_LAH, "recurse with move ") {
+DBG(DBG_LAH, "[%d]recurse with move %d=", depth,i) {
 	printmove(&(mvs[i]), -1);
 }
-		newP.m = mvs[i];
-		makemove6(&(newP.b), &(mvs[i]), 1, 0, &(newP.r));
-		mvsndx = 0;
-		bzero(mvs, sizeof(move_t)*MAXMVS);
-		rv = lah(&newP, depth+1, limit);
-		if (newP.sc > maxsc) {
-			*maxP = newP;
-			maxsc = newP.sc;
+		iP = *P;
+		makemove6(&(iP.b), &(mvs[i]), 1, 0, &(iP.r));
+		iP.m = mvs[i];
+		iP.sc += iP.m.score;
+		*newP = iP; newP->next = NULL;
+		rv = lah(newP, depth+1, limit);
+		if (newP->sc > maxsc) {
+			maxP = iP;
+			maxsc = newP->sc;
 			maxrv = rv;
+			maxi = i;
 		}
 	}
 	// in the case where next move is no move, free maxP.
 	if (maxrv == 0) {
 		P->next = NULL;
-		free(maxP);
+		free(newP);
 	}
-	return 1;
+	*P = maxP;
+//	P->m = mvs[maxi];
+DBG(DBG_LAH, "[%d]returning with move=", depth) {
+	printmove( &(maxP.m), -1);
+	showboard(P->b, B_TILES);
+}
+	free(mvs); mvsndx = 0;
+	return 2;
 }
 
 /* do this later... */
@@ -3446,8 +3471,11 @@ main(int argc, char **argv)
 	hrtime_t start, end, totaltime;
 	uint64_t evals = 0;
 
-        while ((c = getopt(argc, argv, "AI:LSD:MPR:GT:d:vqsb:B:o:t")) != -1) {
+        while ((c = getopt(argc, argv, "LASMGPI:T:n:b:B:D:vqstd:o:R:")) != -1) {
                 switch(c) {
+		case 'n':
+			level = atoi(optarg);
+			break;
 		case 't':
 			dotimes = 1;
 #ifdef DEBUG
@@ -3640,7 +3668,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 		case STRAT_LAH1:
 			startp.sc = -1;
 			if (dotimes) start = gethrtime();
-			totalscore = lah(&startp, 0, 0);
+			totalscore = lah(&startp, 0, level);
 			if (dotimes) end = gethrtime();
 			VERB(VVERB, "final board:\n") {
 				showboard(startp.b, B_TILES);
