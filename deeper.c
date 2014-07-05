@@ -281,7 +281,8 @@ hrtime_t gethrtime()
 {
 	struct timespec ts;
 	uint64_t ns;
-	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+//	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
 	return ns;
 }
@@ -2617,6 +2618,32 @@ DBG(DBG_GOON, "no SEP at nid %d\n", cid);
 	return movecnt;
 }
 
+/*
+ * used lah, but skips levels.
+ */
+int
+jump(position_t *P) {
+{
+	int mcnt = 0;
+	P->sc = -1;
+
+	while (lah(P, 0, level)) {
+		position_t *cP = P;
+		while (cP != NULL) {
+			mcnt++;
+			VERB(VNORM, "jumpy score is %d for ", cP->sc) {
+				printmove(&(cP->m), -1);
+			}
+			*P = *cP;
+			cP = cP->next;
+		}
+	}
+DBG(DBG_LAH, "jump mv %d score =%d\n",mcnt, P->sc);
+	}
+
+	return P->sc;
+}
+
 /* creep uses lah, it only does 1 move/iteration.
 */
 int
@@ -3455,6 +3482,7 @@ parsedbg(char *arg)
 #define STRAT_GREED2B	3
 #define STRAT_LAH1	4
 #define STRAT_CREEP	5
+#define	STRAT_JUMP	6
 
 int
 main(int argc, char **argv)
@@ -3677,6 +3705,14 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 		case STRAT_CREEP:
 			if (dotimes) start = gethrtime();
 			totalscore = creep(&startp);
+			if (dotimes) end = gethrtime();
+			VERB(VVERB, "final board:\n") {
+				showboard(startp.b, B_TILES);
+			}
+			break;
+		case STRAT_JUMP:
+			if (dotimes) start = gethrtime();
+			totalscore = jump(&startp);
 			if (dotimes) end = gethrtime();
 			VERB(VVERB, "final board:\n") {
 				showboard(startp.b, B_TILES);
