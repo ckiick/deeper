@@ -109,30 +109,39 @@ int globaldone = 0;		// set to stop all threads.
 void
 usage(char *me)
 {
-	VERB(VNORM, "usage: %s [-LASMGPvqs][-d dict][-b bag][-B letters][-R letters][-o name][-I file][-D bits|word] moves...", me) {
-		printf(
-	"\t-L: lookup args in dictionary\n"
-	"\t-A: print all anagrams of args\n"
-	"\t-S: score arg as if played on empty board\n"
-	"\t-M: make the starting move with args, display results\n"
-	"\t-G: generate list of moves using args\n"
+	vprintf(VNORM, "%s [-LASMG] [-P] [-I file] [move...]\n", me);
+
+	vprintf(VVERB,
+	"\t-L: lookup moves in dictionary\n"
+	"\t-A: print all anagrams of moves\n"
+	"\t-S: score moves as if played on board\n"
+	"\t-M: make each move on board, show results\n"
+	"\t-G: generate list of possible moves using move\n"
 	"\t-P: set playthru mode for moves\n"
-	"\t-D [bits|word] turn on specified debug flags\n"
-	"\t-R letters: use (up to 7) letters as initial rack\n"
-	"\t-I file: read moves from input file\n"
-	"\t-v: increase verbosity level\n"
+	"\t-I file: read moves from input file\n");
+
+	vprintf(VNORM, "%s -T n [-n lvl] [-b bag] [-B str]\n", me);
+	vprintf(VVERB,
+	"\t-T n: use strategy number n to play game\n"
+	"\t-n lvl: for progressive strats, use level lvl\n"
+	"\t-b [?]A-Z|name: Set bag name. A-Z are built-in, ?=randomize.\n"
+	"\t-B str: set bag to string of tiles (A-Z or ? for blank.\n");
+	vprintf(VNORM, "    [-D bits|word] [-vqs] [-d dict]\n");
+	vprintf(VVERB,
+	"\t-D bits|word turn on specified debug flags\n"
+	"\t-v: increase verbosity level, cumulative\n"
 	"\t-q: no messages, only return values. Cancels -v.\n"
 	"\t-s: collect and report statistics. Use twice for more.\n"
-	"\t-d name: use name.gaddag as dictionary. [default=ENABLE]\n"
-	"\t-b [?]A-Z|name: Set bag name. A-Z are built-in, ?=randomize.\n"
-	"\t-B tiles: set bag to string of tiles (A-Z or ? for blank.)\n"
+	"\t-d name: use name.gaddag as dictionary. [default=ENABLE]\n");
+	vprintf(VNORM, "    [-o file] [-R str]\n");
+	vprintf(VVERB,
 	"\t-o name: save best move to name.gcg\n"
-	"\t args = rc:word or cr:word, r=1-15, c=A-O, word is 1-7 letters.\n"
+	"\t-R str: set rack to string of tiles (A-Z or ? for blank.)\n");
+	vprintf(VVERB,
+	"\t move = rc:word or cr:word, r=1-15, c=A-O, word is 1-7 letters.\n"
 	"\t        If rc is omitted, uses starting position of 8H.\n"
 	"\t        Put row (number) first for horizontal moves. Use lowercase\n"
-	"\t	   letter for blank played.\n"
-		);
-	}
+	"\t        letter for blank played, '?' for unplayed blank.\n");
 }
 
 inline bs_t
