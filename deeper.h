@@ -41,7 +41,7 @@ typedef uint64_t hrtime_t;
 #define	DBG_DICT	0x00000002	// dictionary problems
 #define DBG_INIT	0x00000004	// when init fails
 #define DBG_BAG		0x00000008
-#define DBG_STATS	0x00000010	// print out statistic debug info
+#define DBG_STAT	0x00000010	// print out statistic debug info
 #define DBG_ANA		0x00000020	// dict ops
 #define DBG_LOOK	0x00000040	// dict ops
 #define DBG_SCORE	0x00000080	// scoring
@@ -103,6 +103,18 @@ char dbgs[32][DBG_MAX_NAME] = {
 #define VNOISY	2	// run off at the mouth a little
 #define VDUMP	5	// tell me EVERYTHING
 #define VOMG	9	// avalanche!!!!
+
+/* use the trick again with stats. */
+#define	STNO	0
+#define STLOW	1
+#define	STMED	2
+#define STHI	3
+
+#define stprintf(lvl, fmt, ...) \
+	if (dostats >= (lvl)) printf(fmt, ##__VA_ARGS__)
+
+#define STAT(lvl, fmt, ...)	\
+        if (( dostats >= lvl) ? 1 + printf(fmt, ##__VA_ARGS__) : 0)
 
 /* general game constants */
 #define BINGOBONUS	50
@@ -357,17 +369,20 @@ typedef struct Gstats {
 	uint64_t moves;		/* total moves generated */
 	int maxdepth;		/* deepest move stack */
 	int maxwidth;		/* move moves for a position */
-	int wordhiscore;	/* highest 1-word score */
-	int hiscore;		/* highest game score so far */
+	int wordhs;		/* highest 1-word score */
+	int gamehs;		/* highest game score so far */
 } gstats_t;
 
 /* position: basically a snapshot of game state. */
 typedef struct Position {
 	board_t	b;		/* current game board, with move played */
+	move_t m;		/* current move */
+	rack_t r;		/* what to play with */
 	int sc;			/* total of all move scores */
 	int bagndx;		/* aka how many tiles used so far */
-	rack_t r;		/* what to play with */
-	move_t m;		/* current move */
+	int mvndx;		/* which move are we */
+	int mvcnt;		/* direct children in game tree */
+	int depth;		/* keep internally for referral */
 	struct Position *prev;	/* points to last position. */
 	struct Position *next;	/* another link in the chain */
 	pstate_t state;		/* know what we are doing */

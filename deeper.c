@@ -103,6 +103,7 @@ int dotimes = 0;	// set if we should time ourselves.
 int level = 0;		// degree of strategy strength
 char *infile = 0;
 int strat = 0;		// move choosing strategy.
+int dostats = 0;	// how much stat info to report.
 
 /* job/process control */
 int globaldone = 0;		// set to stop all threads.
@@ -280,11 +281,8 @@ revstr(char *str)
 hrtime_t gethrtime()
 {
 	struct timespec ts;
-	uint64_t ns;
-//	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
-	ns = ts.tv_sec * 1000000000 + ts.tv_nsec;
-	return ns;
+	return ((uint64_t)ts.tv_sec * 1000000000LU + (uint64_t)ts.tv_nsec);
 }
 #endif
 
@@ -539,8 +537,8 @@ initstuff()
 	globalstats.evtime = 0;
 	globalstats.maxdepth = 0;
 	globalstats.maxwidth = 0;
-	globalstats.wordhiscore = 0;
-	globalstats.hiscore = 0;
+	globalstats.wordhs = 0;
+	globalstats.gamehs = 0;
 
 	/* make up our starting position. */
 	startp.b = startboard;
@@ -552,6 +550,8 @@ initstuff()
 	startp.next = NULL;
 	startp.state = START;
 	startp.stats = nullstats;
+	startp.mvcnt = 0;
+	startp.mvndx = -1;
 
 	if (rackstr != NULL) {
 		if (strlen(rackstr) > 7) {
@@ -972,8 +972,8 @@ finalscore(scthingy_t sct)
 {
 	int fsc = 0;
 	updatescore(&sct);
-	/* bingo */
 DBG(DBG_SCORE, "ttl_ts=%hd ttl_tbs=%hd, ttl_wm=%hd, ttl_xs=%hd, played=%hd, ts=%hd, tbs=%hd, lms=%hd, wm=%hd, play=%hd\n", sct.ttl_ts, sct.ttl_tbs, sct.ttl_wm, sct.ttl_xs, sct.played, sct.ts, sct.tbs, sct.lms, sct.wm, sct.play);
+	/* bingo */
 	if (sct.played >= RACKSIZE) {
 		fsc += BINGOBONUS;
 	}
@@ -1508,6 +1508,37 @@ printmove(move_t *m, int rev)
 	printf("\n");
 }
 
+
+/*
+ * print out a full position. Use VERB levels.
+ * depth, move, score, rack, (bag, bagpos), board
+ * stats
+ */
+void
+printpos(position_t P)
+{
+	vprintf(VNORM, "position[%d]=%d",  P.depth, P.sc);
+	VERB(VNORM, " move %d of %d ", P.mvndx, P.mvcnt) {
+		printmove(&(P.m), -1);
+	}
+	VERB(VVERB, "rack=") {
+		printlstr(P.r.tiles);
+		printf(" bag=%c[%d] ",bagtag, P.bagndx);
+		printf("\n");
+	}
+	stprintf(STMED, "%llu moves in %llu nsec: %llu nsec/mv\n", P.stats.moves, P.stats.evtime, P.stats.evtime/P.stats.moves);
+	stprintf(STMED, "max: depth=%d width=%d word score=%d game score=%d\n", P.stats.maxdepth, P.stats.maxwidth, P.stats.wordhs, P.stats.gamehs);
+	VERB(VVERB, "-") {
+		showboard(P.b, B_TILES);
+	}
+	VERB(VNOISY, "-") {
+		showboard(P.b, B_ANCHOR);
+		showboard(P.b, B_HMLS);
+		showboard(P.b, B_VMLS);
+		showboard(P.b, B_HMBS);
+		showboard(P.b, B_VMBS);
+	}
+}
 
 /*
  * genall: this move generator has no strategy. Given board, rack,
@@ -2201,6 +2232,8 @@ veep_b(position_t *P, move_t *mvs, int mvcnt)
 	}
 	makemove6(&(P->b), &(mvs[bigm]), 1, 0, &(P->r));
 	P->m = mvs[bigm];
+	P->stats.evals += mvcnt;
+	P->mvndx = bigm;
 	return maxsc;
 }
 
@@ -2647,15 +2680,20 @@ DBG(DBG_LAH, "jump mv %d score =%d\n",mcnt, P->sc);
 /* creep uses lah, it only does 1 move/iteration.
 */
 int
-creep(position_t *P) {
+creep(position_t *P)
+{
 	int mcnt = 0;
 	P->sc = -1;
+	int rv = 1;
+	hrtime_t fore, aft;
 
-	while (lah(P, 0, level)) {
-		mcnt++;
-		VERB(VNORM, "creepy score is %d for ", P->sc) {
-			printmove(&(P->m), -1);
-		}
+	fore = gethrtime();
+	rv = lah(P, 0, level);
+	aft = gethrtime();
+	while (rv) {
+		P->stats.evtime += aft - fore;
+		P->depth++;
+		printpos(*P);
 DBG(DBG_LAH, "creep chain is:") {
 	position_t *cP = P;
 	while (cP != NULL) {
@@ -2663,9 +2701,11 @@ DBG(DBG_LAH, "creep chain is:") {
 		cP = cP->next;
 	}
 }
-DBG(DBG_LAH, "creep mv %dscore =%d P->next = %p\n",mcnt, P->sc,  P->next);
+DBG(DBG_LAH, "creep mv %dscore =%d P->next = %p\n", P->depth, P->sc,  P->next);
+		fore = gethrtime();
+		rv = lah(P, 0, level);
+		aft = gethrtime();
 	}
-
 	return P->sc;
 }
 
@@ -2679,22 +2719,25 @@ DBG(DBG_LAH, "creep mv %dscore =%d P->next = %p\n",mcnt, P->sc,  P->next);
 int
 lah(position_t *P, int depth, int limit)
 {
-	int mvcnt = 0;
 	move_t *mvs = NULL;
 	int mvsndx = 0;
 	position_t *newP, maxP, iP;
 	int maxsc = -1000000;		// lower than any possible score.
 	int i; int rv; int maxrv; int maxi;
+	hrtime_t fore, aft;
 
 	fillrack(&(P->r), globalbag, &(P->bagndx));
 	qsort(P->r.tiles, strlen(P->r.tiles), 1, lcmp);
 DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
 	printlstr(P->r.tiles); printf("\n");
 }
-	mvcnt = genall_b(P, &mvs, &mvsndx);
+	P->mvcnt = genall_b(P, &mvs, &mvsndx);
+	P->stats.moves += P->mvcnt;
+	if (depth > P->stats.maxdepth) P->stats.maxdepth = depth;
+	if (P->mvcnt > P->stats.maxwidth) P->stats.maxwidth = P->mvcnt;
 
-DBG(DBG_LAH, "[%d]genall gave %d moves\n",depth, mvcnt);
-	if (mvcnt == 0) {
+DBG(DBG_LAH, "[%d]genall gave %d moves\n",depth, P->mvcnt);
+	if (P->mvcnt == 0) {
 		/* there were no more moves. EOG */
 		P->sc -= unbonus(&(P->r), globalbag, P->bagndx);
 		P->next = NULL;
@@ -2702,7 +2745,9 @@ DBG(DBG_LAH, "[%d]genall gave %d moves\n",depth, mvcnt);
 		return 0;
 	}
 	if (depth >= limit) {
-		P->sc += veep_b(P, mvs, mvcnt);
+		int score = veep_b(P, mvs, P->mvcnt);
+		P->sc += score;
+		if (score > P->stats.wordhs) P->stats.wordhs = score;
 		P->next = NULL;
 		free(mvs); mvsndx = 0;
 DBG(DBG_LAH, "[%d]veep found move =", depth) {
@@ -2715,21 +2760,30 @@ DBG(DBG_LAH, "[%d]veep found move =", depth) {
 	newP = malloc(sizeof(position_t));
 	P->next = newP;
 
-	for (i = 0; i < mvcnt; i++) {
+	for (i = 0; i < P->mvcnt; i++) {
 DBG(DBG_LAH, "[%d]recurse with move %d=", depth,i) {
 	printmove(&(mvs[i]), -1);
 }
 		iP = *P;
 		makemove6(&(iP.b), &(mvs[i]), 1, 0, &(iP.r));
 		iP.m = mvs[i];
+		iP.mvndx = i;
 		iP.sc += iP.m.score;
+		if (iP.m.score > iP.stats.wordhs) iP.stats.wordhs = iP.m.score;
 		*newP = iP; newP->next = NULL;
+		fore = gethrtime();
 		rv = lah(newP, depth+1, limit);
+		aft = gethrtime();
+		newP->stats.evtime = aft - fore;
+		P->stats.moves += newP->mvcnt;
+		P->stats.evtime += newP->stats.evtime;
+		if (newP->stats.maxdepth > P->stats.maxdepth)
+			P->stats.maxdepth = newP->stats.maxdepth;
 		if (newP->sc > maxsc) {
 			maxP = iP;
 			maxsc = newP->sc;
 			maxrv = rv;
-			maxi = i;
+			maxP.mvndx = i;
 		}
 	}
 	// in the case where next move is no move, free maxP.
@@ -3546,7 +3600,7 @@ DBG(DBG_DBG, "set dflags to 0x%lX\n", dflags);
 			verbose = VSHH;
 			break;
 		case 's':
-                        stats++;
+                        dostats++;
                         break;
 		case 'd':
 			dfn = optarg;
@@ -3580,7 +3634,7 @@ DBG(DBG_DBG, "set dflags to 0x%lX\n", dflags);
 		return 4;
 	}
 	DBG(DBG_DBG, "using verbose level %d\n", verbose);
-
+	DBG(DBG_STAT, "using stat level %d\n", dostats);
 	vprintf(VVERB, "Program version %s.%d\n", VER, REV);
 #ifdef DEBUG
 	verify();
@@ -3722,9 +3776,9 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 	}
 	if (dotimes) {
 		totaltime = end - start;
-		startp.stats.evtime = totaltime;
 vprintf(VNORM, "elapsed time is %lld nsec (%lld sec)\n", totaltime, totaltime/1000000000);
 	}
+	STAT(STLOW, "%llu moves in %llu nsec = %llu ns/m\n", startp.stats.moves, startp.stats.evtime,  startp.stats.evtime / startp.stats.moves);
 	if (totalscore > 0)
 		vprintf(VNORM, "total score is %d\n", totalscore);
 
