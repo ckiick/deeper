@@ -152,11 +152,16 @@ lstr2bs(letter_t *lstr)
 {
 	int i = 0;
 	bs_t bs = 0;
-
+#ifndef NOTDEF
 	while (lstr[i] != '\0') {
 		setbit(bs, lstr[i]-1);
 		i++;
 	}
+#else
+	for (i=0; lstr[i] != '\0'; i++) {
+		setbit(bs, lstr[i]-1);
+	}
+#endif
 	return bs;
 }
 
@@ -1548,7 +1553,7 @@ printpos(position_t P)
  */
 #define MAXMVS	8192	/* mvs array. expand as needed. */
 
-/* mod to use position_t. */
+/* mod to use position_t. This is the most used in lah. */
 int
 genallat_b(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthingy_t sct)
 {
@@ -1597,11 +1602,10 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), ar,ac,pos, nodeid) {
 		prelen = ndx + 1;
 	}
 	/* if NOT first, don't redo anchors */
-DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 	if ((ndx > 0) && b->spaces[currow][curcol].b.f.anchor) {
+DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 		return movecnt;
 	}
-
 	w[ndx+1] = '\0';
 
 	while (rlp != NULL) {
