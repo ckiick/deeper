@@ -19,6 +19,17 @@ debug:	deeper-dbg
 nondebug:	deeper-nd
 	cp deeper-nd deeper
 
+prof:	deeper-prof
+	rm -f gmon.out deeper.gc*
+	./deeper-prof -T 5 -b A -n 1 -t -ss
+	gcov deeper.c
+	ggprof -b -c ./deeper-prof > gprof.out
+	ggprof -b -l ./deeper-prof >> gprof.out
+	head -23 gprof.out
+
+deeper-prof:	deeper.c deeper.h
+	gcc -g -pg -fprofile-arcs -ftest-coverage -DREV=$(REV) -o deeper-prof deeper.c -lrt
+
 clean:
 	rm -rf deeper gdexp mkbitset
 

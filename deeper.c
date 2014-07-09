@@ -44,7 +44,7 @@
 inline int
 popc(uint32_t w)
 {
-        volatile int c;
+        int c;
         _popc(w,c);
         return c;
 }
@@ -55,7 +55,7 @@ popc(uint32_t w)
 inline int
 ffb(uint32_t w)
 {
-        volatile int c;
+        int c;
         _ffs(w,c);
         return c;
 }
@@ -613,7 +613,11 @@ cmplgl(letter_t l, letter_t g)
 inline int
 gotol(letter_t l, int nid)
 {
-	return nid + popc(bitset[nid] << (32-l)) -1;
+	uint32_t bits;
+
+	bits = bitset[nid] << (32 -l);
+	return nid + popc(bits) - 1;
+//	return nid + popc(bitset[nid] << (32-l)) -1;
 }
 
 /* return the next letter, and fix up bs */
@@ -1682,7 +1686,7 @@ printpos(position_t P)
 
 #define MAXMVS	8192	/* mvs array. expand as needed. */
 
-/* re-write. try to make it smoother. recurse less. */
+/* don't recurse on runs of played tiles. */
 int
 genallat_c(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthingy_t sct, int depth)
 {
@@ -1715,42 +1719,7 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), currow,curcol,pos, nodeid)
 	printlstr(r->tiles);
 	printf("\"\n");
 }
-
-	ASSERT((m->row >= 0) && (m->row < BOARDY) &&
-	    (m->col >= 0) || (m->col < BOARDX));
-	/* if played, follow to space. */
-	while (pl = b->spaces[currow][curcol].b.f.letter) {
-		if (!(bitset[nodeid] & l2b(pl))) {
-			return movecnt;
-		}
-		curid = gotol(deblank(pl), nodeid);
-		m->tiles[depth] = pl;
-		sct.ttl_ts += lval(pl);
-		sct.ttl_tbs += lval(pl);
-		nodeid = gc(gaddag[curid]);
-		if (nldn(b, currow, curcol, m->dir, side)) {
-			break;
-		}
-		currow += side * m->dir;
-		curcol += side * (1-m->dir);
-	}
-	if (pl) {
-		/* last played letter in this streak. */
-		if (side < 0) {
-			m->row = currow;
-			m->col = curcol;
-		}
-		if (gf(gaddag[curid])) {
-		}
-
-		currow += side * m->dir;
-		curcol += side * (1-m->dir);
-	}
-
-
-
 	ASSERT(strlen(w) == depth);
-//	ndx = strlen(w);	/* depth */
 	if (pos > 0) {
 		side = 1;
 		prelen = pos;
@@ -1760,8 +1729,9 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), currow,curcol,pos, nodeid)
 		side = -1;
 		prelen = ndx + 1;
 	}
-	/* if NOT first, don't redo anchors */
-	if ((ndx > 0) && b->spaces[currow][curcol].b.f.anchor) {
+	/* if NOT first, going back, don't redo anchors */
+	if ((ndx > 0) && (side < 0) &&
+	   (b->spaces[currow][curcol].b.f.anchor)) {
 DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 		return movecnt;
 	}
@@ -1772,6 +1742,7 @@ DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.
 DBG(DBG_GEN, "[%d]inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", ndx, rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
 
 }
+again:
 		pl = b->spaces[currow][curcol].b.f.letter;
 		if (pl != '\0') {
 DBG(DBG_GEN, "[%d]found %c on board at %d, %d\n", ndx, l2c(pl), currow, curcol);
@@ -1871,7 +1842,7 @@ DBG(DBG_GEN, "recurse 1 (%d, %d,%d, word, rack, id=%d)", m->row, m->col, pos, ci
 				m->col -= (1 - m->dir);
 				m->row -= m->dir;
 			}
-			movecnt += genallat_b(P, mvs, mvsndx, pos, cid, sct, depth+1);
+			movecnt += genallat_c(P, mvs, mvsndx, pos, cid, sct, ndx+1);
 			if (pos <= 0) {
 				m->col += (1 - m->dir);
 				m->row += m->dir;
@@ -1892,7 +1863,7 @@ DBG(DBG_GEN, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
-				movecnt += genallat_b(P, mvs, mvsndx, prelen, cid, sct, depth+1);
+				movecnt += genallat_c(P, mvs, mvsndx, prelen, cid, sct, ndx+1);
 			} else {
 DBG(DBG_GEN, "no room! no room! at %d %d dir=%d\n", currow, curcol, m->dir);
 			}
@@ -2115,7 +2086,7 @@ genall_b(position_t *P, move_t **mvs, int *mvsndx)
 	if (P->sc == -1) {
 		P->sc = 0;
 		P->m.row = STARTR; P->m.col = STARTC; P->m.dir = M_HORIZ;
-		moves = genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0);
+		moves = genallat_c(P, *mvs, mvsndx, 0, 1, newsct, 0);
 DBG(DBG_GEN, "genall made %d start moves\n", moves);
 		return moves;
 	}
@@ -2129,7 +2100,7 @@ DBG(DBG_GEN, "genall made %d start moves\n", moves);
 					P->m.row = r; P->m.col = c;
 					P->m.dir = dir;
 					
-					moves += genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0);
+					moves += genallat_c(P, *mvs, mvsndx, 0, 1, newsct, 0);
 				}
 			}
 		}
@@ -2621,7 +2592,7 @@ ceo2_b(board_t *gb)
 DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 	printlstr(P.r.tiles); printf("\n");
 }
-	mvcnt = genallat_b(&P, mvs, &mvsndx, 0, 1, newsct, 0);
+	mvcnt = genallat_c(&P, mvs, &mvsndx, 0, 1, newsct, 0);
 
 	while (mvcnt > 0) {
 		totalscore += veep_b(&P, mvs, mvcnt);

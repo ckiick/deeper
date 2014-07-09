@@ -185,14 +185,16 @@ typedef uint32_t bs_t;		// bitset
 #define setbit(w,b) 	asm("btsl %1,%0" : "+r" (w) : "g" (b))
 #define clrbit(w,b) 	asm("btrl %1,%0" : "+r" (w) : "g" (b))
 #else
-#define _popc(w,c)	asm("popc %1,%0\t\n" : "+r" (c) : "r" (w))
+//#define _popc(w,c)	asm("popc %1,%0\t\n" : "+r" (c) : "r" (w))
+#define popc    __builtin_popcount
 #define	setbit(w,b)		((w)|=(0x01<<(b)))
 #define	clrbit(w,b)		((w)&=(~(0x01<<(b))))
-#define _ffs(w,c)	asm("neg %1, %0\t\n"			\
-				"xnor %1, %0, %0\t\n"		\
-				"popc %0, %0\t\n"		\
-				"movrz %1, %%g0, %0\t\n"	\
-				: "+r" (c) : "r" (w))
+// #define _ffs(w,c)	asm("neg %1, %0\t\n"			\
+//				"xnor %1, %0, %0\t\n"		\
+//				"popc %0, %0\t\n"		\
+//				"movrz %1, %%g0, %0\t\n"	\
+//				: "+r" (c) : "r" (w))
+#define	ffb	__builtin_ffs
 #endif
 
 

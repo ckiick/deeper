@@ -8,3 +8,7 @@ mkbitset
 deeper-nd
 deeper-gdb
 .svn
+gmon.out
+gprof.out
+deeper.gcda
+deeper.gcno
