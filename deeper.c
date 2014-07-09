@@ -1736,8 +1736,12 @@ DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.
 		return movecnt;
 	}
 	w[ndx+1] = '\0';
-
 	updatescore(&sct);
+
+	if (side < 0) {
+	}
+
+
 	while (rlp != NULL) {
 DBG(DBG_GEN, "[%d]inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", ndx, rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
 
