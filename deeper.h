@@ -279,6 +279,7 @@ typedef union _subspace {
 typedef struct Space {
 	subspace_t b;
 	bs_t mbs[2];	/* H and V move bitsets. */
+	gn_t mnid[2];
 } space_t;
 
 /* cvt letter to playable bit. */
@@ -302,7 +303,9 @@ typedef struct Board {
 #define B_HMBS		6
 #define B_VMBS		7
 #define B_ANCHOR	8
-#define B_BAD		9
+#define B_HMNID		9
+#define	B_VMNID		10
+#define B_BAD		11
 
 #define DL	1
 #define TL	2
