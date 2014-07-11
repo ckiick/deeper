@@ -6,7 +6,8 @@ gdexp
 input
 mkbitset
 deeper-nd
-deeper-gdb
+deeper-dbg
+deeper-prof
 .svn
 gmon.out
 gprof.out
