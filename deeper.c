@@ -424,6 +424,31 @@ DBG(DBG_RACK, "bag now at %d, filled %d tiles to make ", *bagpos, cnt) {
 	return cnt;
 }
 
+/* remove a letter from the rack, mainstain bitset. */
+char *
+pluckrack2(rack_t *r, letter_t l, bs_t *bs)
+{
+	char *lp;
+
+	if (r == NULL) return NULL;
+	if (is_pblank(l)) l = UBLANK;
+	lp = strchr(r->tiles, l);
+	if (lp != NULL) {
+		*lp = MARK;
+	} else {
+		VERB(VVERB, "Missing letter %c from rack\n", l2c(l)) {
+			printlstr(r->tiles); printf("\n");
+		}
+	}
+	VERB(VNOISY, "Plucked rack now ") {
+		printlstr(r->tiles); printf("\n");
+	}
+	if (strchr(r->tiles, l) == NULL) {
+		clrbit(*bs, l-1);
+	}
+	return lp;
+}
+
 /* remove a letter from the rack */
 char *
 pluckrack(rack_t *r, letter_t l)
@@ -1951,7 +1976,7 @@ DBG(DBG_GEN, "rcall B pos=%d depth=%d a=(%d,%d)\n", 0, 0, ar, ac);
 
 /* mod to use position_t. This is the most used in lah. */
 int
-genallat_b(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthingy_t sct, int depth)
+genallat_b(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthingy_t sct, int depth, bs_t rbs)
 {
 	board_t *b = &(P->b);
 	move_t *m = &(P->m);
@@ -1967,7 +1992,7 @@ genallat_b(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthing
 	int curcol = m->col;
 	int currow = m->row;
 	char *rlp = (char *)1;
-	bs_t rbs = 0;
+//	bs_t rbs = 0;
 	bs_t bl = 0;
 	bs_t bs = 0;
 	register letter_t pl;
@@ -2023,7 +2048,7 @@ DBG(DBG_GEN, "[%d]found %c on board at %d, %d\n", ndx, l2c(pl), currow, curcol);
 			}
 		} else {
 			if (curid == -1) {
-				rbs = lstr2bs(r->tiles);
+//				rbs = lstr2bs(r->tiles);
 				if (rbs & UBLBIT) bl = BB;
 				curid = nodeid;
 				if (bl) bs = ALLPHABITS & bitset[nodeid];
@@ -2033,8 +2058,13 @@ DBG(DBG_GEN, "[%d]found %c on board at %d, %d\n", ndx, l2c(pl), currow, curcol);
 				}
 DBG(DBG_GEN, "[%d]first (%d,%d)/%d bl=%x, rbs=%x, id=%d, bitset=%x mbs=%x bs=%x\n", ndx, currow, curcol, m->dir, bl, rbs, nodeid, bitset[nodeid], b->spaces[currow][curcol].mbs[m->dir], bs);
 			} else {
-				if (bl) *rlp = UBLANK;
-				else *rlp = w[ndx];
+				if (bl) {
+					setbit(rbs, UBLANK-1);
+					*rlp = UBLANK;
+				} else {
+					setbit(rbs, w[ndx]-1);
+					*rlp = w[ndx];
+				}
 DBG(DBG_GEN, "[%d] Pop %c back to rack\n", ndx,  l2c(w[ndx]));
 			}
 			if ((bs == 0) && (bl)) {
@@ -2055,10 +2085,13 @@ DBG(DBG_GEN, "[%d] Pop %c back to rack\n", ndx,  l2c(w[ndx]));
 DBG(DBG_GEN,"[%d]match %c bl=%x, node %d rack=", ndx, l2c(pl),bl, nodeid) {
 	printlstr(r->tiles); printf("\n");
 }
-				if (bl) rlp = strchr(r->tiles, UBLANK);
-				else rlp = strchr(r->tiles, pl);
-				ASSERT(rlp != NULL);
+				if (bl) {
+					rlp = pluckrack2(r, UBLANK, &rbs);
+				} else  {
+					rlp = pluckrack2(r, pl, &rbs);
+				}
 				*rlp = MARK;
+				ASSERT(rlp != NULL);
 				pl |= bl;
 				w[ndx] = pl;
 				sct.ts = lval(pl);
@@ -2104,7 +2137,7 @@ DBG(DBG_GEN, "recurse 1 (%d, %d,%d, word, rack, id=%d)", m->row, m->col, pos, ci
 				m->col -= (1 - m->dir);
 				m->row -= m->dir;
 			}
-			movecnt += genallat_b(P, mvs, mvsndx, pos, cid, sct, depth+1);
+			movecnt += genallat_b(P, mvs, mvsndx, pos, cid, sct, depth+1, rbs);
 			if (pos <= 0) {
 				m->col += (1 - m->dir);
 				m->row += m->dir;
@@ -2125,7 +2158,7 @@ DBG(DBG_GEN, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
 	printf("\", rack=\""); printlstr(r->tiles);
 	printf("\"\n");
 }
-				movecnt += genallat_b(P, mvs, mvsndx, prelen, cid, sct, depth+1);
+				movecnt += genallat_b(P, mvs, mvsndx, prelen, cid, sct, depth+1, rbs);
 			} else {
 DBG(DBG_GEN, "no room! no room! at %d %d dir=%d\n", currow, curcol, m->dir);
 			}
@@ -2187,6 +2220,7 @@ int
 genall_b(position_t *P, move_t **mvs, int *mvsndx)
 {
 	int r, c, dir, moves = 0;
+	bs_t rbs;
 
 	if (*mvs == NULL) {
 		*mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
@@ -2197,11 +2231,12 @@ genall_b(position_t *P, move_t **mvs, int *mvsndx)
 	}
 	bzero(*mvs, sizeof(move_t)*MAXMVS);
 	*mvsndx = 0;
+	rbs = lstr2bs(P->r.tiles);
 
 	if (P->sc == -1) {
 		P->sc = 0;
 		P->m.row = STARTR; P->m.col = STARTC; P->m.dir = M_HORIZ;
-		moves = genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0);
+		moves = genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0, rbs);
 DBG(DBG_GEN, "genall made %d start moves\n", moves);
 		return moves;
 	}
@@ -2215,7 +2250,7 @@ DBG(DBG_GEN, "genall made %d start moves\n", moves);
 					P->m.row = r; P->m.col = c;
 					P->m.dir = dir;
 					
-					moves += genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0);
+					moves += genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0, rbs);
 				}
 			}
 		}
@@ -2691,6 +2726,7 @@ ceo2_b(board_t *gb)
 	int mvsndx = 0;
 	move_t *mvs = NULL;
 	position_t P = startp;
+	bs_t rbs;
 
 	mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
 	if (mvs == NULL) {
@@ -2707,7 +2743,8 @@ ceo2_b(board_t *gb)
 DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 	printlstr(P.r.tiles); printf("\n");
 }
-	mvcnt = genallat_b(&P, mvs, &mvsndx, 0, 1, newsct, 0);
+	rbs = lstr2bs(P.r.tiles);
+	mvcnt = genallat_b(&P, mvs, &mvsndx, 0, 1, newsct, 0, rbs);
 
 	while (mvcnt > 0) {
 		totalscore += veep_b(&P, mvs, mvcnt);
