@@ -3173,7 +3173,7 @@ DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
 	printlstr(P->r.tiles); printf("\n");
 }
 	P->m = emptymove;
-	P->mvcnt = genall_c(P, &mvs, &mvsndx);
+	P->mvcnt = genall_b(P, &mvs, &mvsndx);
 	P->stats.moves += P->mvcnt;
 	if (depth > P->stats.maxdepth) P->stats.maxdepth = depth;
 	if (P->mvcnt > P->stats.maxwidth) P->stats.maxwidth = P->mvcnt;
