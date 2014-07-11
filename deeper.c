@@ -893,6 +893,71 @@ DBG(DBG_MATCH, "inner loop, i=%d, cid=%d, reenter=%d tst=%d (%c - %c)\n", *i, *c
 	return 0;
 }
 
+/* anagram using bitset. */
+int
+doanagram_e(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
+{
+	int anas = 0;
+	int curid = -1;
+	bs_t bs = 0;
+	bs_t lbs;
+	letter_t l;
+	letter_t *lp;
+
+	DBG(DBG_ANA, "doing anagram lvl %d", depth) {
+		printnode(" with", nodeid);
+	}
+	lbs = lstr2bs(rest);
+
+	curid = nodeid;
+	bs = bitset[nodeid] & lbs;
+	while (l = nextl(&bs, &curid)) {
+DBG(DBG_ANA, "matched %c from ", l2c(l)) {
+		printlstr(rest);
+		printnode(" using", curid);
+}
+		sofar[depth] = l;
+		/* remove l from rest. */
+		lp = strchr(rest, l);
+		*lp = MARK;
+		if (gf(gaddag[curid])) {
+			anas++;
+			VERB(VNORM, " ") {
+				printlrstr(sofar); printf("\n");
+			}
+		}
+		anas += doanagram_e(gc(gaddag[curid]), sofar, depth+1, rest);
+		*lp = l;
+	}
+	/* if there is a '?', do another round. */
+	if (lbs & UBLBIT) {
+		curid = nodeid;
+		bs = ALLPHABITS & bitset[nodeid];
+		lp = strchr(rest, UBLANK);
+		*lp = MARK;
+		while (l = nextl(&bs, &curid)) {
+DBG(DBG_ANA, "blank %c from ", l2c(l|BB)) {
+		printlstr(rest);
+		printnode(" using", curid);
+}
+			sofar[depth] = l|BB;
+			if (gf(gaddag[curid])) {
+				anas++;
+				VERB(VNORM, " ") {
+					printlrstr(sofar); printf("\n");
+				}
+			}
+			anas += doanagram_e(gc(gaddag[curid]), sofar, depth+1, rest);
+		}
+		*lp = UBLANK;
+	}
+DBG(DBG_ANA, "Pop %c at %d back to ", l2c(sofar[depth]), depth) {
+	printlstr(rest); printf("\n");
+}
+	sofar[depth] = '\0';
+	return anas;
+}
+
 /* anagram using match iterator. */
 int
 doanagram_d(uint32_t nodeid, letter_t *sofar, int depth, letter_t *rest)
@@ -947,7 +1012,7 @@ anagramstr(letter_t *letters, int doscore)
 	DBG(DBG_ANA, "let the recursion begin on\n") {
 		printlstr(lset); printf("\n");
 	}
-	return doanagram_d(1, sofar, 0, lset);
+	return doanagram_e(1, sofar, 0, lset);
 }
 
 
