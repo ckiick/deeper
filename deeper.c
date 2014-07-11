@@ -92,16 +92,16 @@ static const scthingy_t newsct = { 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 };
 
 /* diag, debug and stats */
 int verbose = 0;		// level of info output
-unsigned long dflags = 0;			// for DBG statements
+unsigned long dflags = 0;	// for DBG statements
 int stats = 0;			// report stats while running
 char *gcgfn = NULL;		// save result here
 gstats_t globalstats;		// global statistics
 
 /* other options */
-int doscore = 0;
+int doscore = 0;	// report scores as well
 int dotimes = 0;	// set if we should time ourselves.
 int level = 0;		// degree of strategy strength
-char *infile = 0;
+char *infile = 0;	// move input file.
 int strat = 0;		// move choosing strategy.
 int dostats = 0;	// how much stat info to report.
 
@@ -147,6 +147,7 @@ usage(char *me)
 	"\t        letter for blank played, '?' for unplayed blank.\n");
 }
 
+/* TODO: test which one is faster. */
 inline bs_t
 lstr2bs(letter_t *lstr)
 {
@@ -446,8 +447,8 @@ pluckrack(rack_t *r, letter_t l)
 	return lp;
 }
 
-int
 /* initialize a bunch of things. 0 = success. */
+int
 initstuff()
 {
 	int r, c;
@@ -610,6 +611,7 @@ cmplgl(letter_t l, letter_t g)
 /* given a letter, find corresponding nodeid in nid.
  * we can assume that the bit for l is set. (Maybe not).
  * NOTE: can't optimize by assuming uint32_t << 32 == 0.  it's not.
+ * BUG: SPARC gcc optimization messes this up.
  */
 inline int
 gotol(letter_t l, int nid)
@@ -748,6 +750,80 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 	b->spaces[row][col].mbs[1-dir] = fbs;
 }
 
+#ifdef NOTDEF
+/* mi using bitsets. Returns 0 if no more letters. */
+letter_t
+mibs(letter_t *s, int *nodeid, int *bl, bs_t *bs)
+{
+
+	letter_t l;
+
+	l = nextl(
+
+	int reenter = 1;
+	bs_t bs;
+
+	if ((*curid == 0) || (nodeid == 0)){
+		return 0;
+	}
+DBG(DBG_MATCH, "id=%d i=%d, curid=%d s=", nodeid, *i, *curid) {
+	printlstr(s);
+	if (*curid >= 0)
+		printnode(" curid", *curid);
+	else
+		printf(" curid = -1\n");
+}
+
+	if (*curid < 0) {
+		reenter = 0;
+		*curid = nodeid;
+	}
+
+	bs = lstr2bs(s) & bitset[*curid];
+	l = nextl(&bs, curid);
+	if (l == '\0') {
+	}
+
+	while ( (spl = nextl(&nbs, &gid)) ) {
+
+	for (; s[*i] != '\0'; (*i)++) {
+		letter_t l = s[*i];
+		letter_t nl;
+		gn_t curnode;
+		int tst;
+		int bl;
+		if ((l == MARK) || (l == s[(*i)+1])) continue;
+		bl = is_pblank(l) || is_ublank(l);
+		if (is_ublank(l)) *curid = nodeid;	/* start over */
+
+		do {
+			curnode = gaddag[*curid];
+			nl = gl(curnode);
+			tst=cmplgl(l,nl);
+DBG(DBG_MATCH, "inner loop, i=%d, cid=%d, reenter=%d tst=%d (%c - %c)\n", *i, *curid, reenter, tst, l2c(l), l2c(nl));
+			if (tst == 0) {
+				if (bl) {
+					s[*i] = blankgl(nl);
+				}
+				if (!reenter) {
+					return 1;
+				} else {
+					reenter = 0;
+				}
+			}
+			if ((tst >= 0) && !gs(curnode)) {
+				(*curid)++;
+			} else {
+				break;
+			}
+		} while (tst >= 0);
+		if (bl) s[*i] = UBLANK;
+	}
+	return 0;
+}
+
+#endif
+
 /*
  * match iterator: non-recursive iteration function for letters against
  * gaddag edges.  Re-entrant and state savable.
@@ -872,6 +948,66 @@ anagramstr(letter_t *letters, int doscore)
 		printlstr(lset); printf("\n");
 	}
 	return doanagram_d(1, sofar, 0, lset);
+}
+
+
+/* lookup using bitset.  */
+int
+bs_lookup(int i, letter_t *word, uint32_t nodeid)
+{
+	letter_t l;
+	bs_t b;
+	int matchcount = 0;
+
+	ASSERT(i > 0);
+#ifdef NOTDEF
+	if (i == 0) {
+DBG(DBG_LOOK, "Nothing to match\n");
+		return 0;
+	}
+#endif
+
+	for (i-=1; i >= 0; i--) {
+		l = word[i];
+DBG(DBG_LOOK, "i=%d, word[i]=%c, nid=%d\n", i, l2c(l), nodeid);
+
+		b = l2b(l);
+		if (l == UBLANK) {
+			letter_t bl;
+			b = bitset[nodeid] & ALLPHABITS;
+			while (bl = nextl(&b, &nodeid)) {
+				/* recurse on blanks. */
+				word[i] = BB | bl;
+DBG(DBG_LOOK, "i=%d, blank=%c nid=%d word=",i, l2c(BB|bl), nodeid) {
+	printlstr(word); printf("\n");
+}
+				if ((i <= 0) && ( gf(gaddag[nodeid]))) {
+					matchcount++;
+					VERB(VNORM, " ") {
+						printlstr(word); printf("\n");
+					}
+				}
+				if (i>0)
+					matchcount += bs_lookup(i, word, gc(gaddag[nodeid]));
+			}
+			word[i] = UBLANK;
+			break;
+		} else if (b & bitset[nodeid]) {
+			nodeid = gotol(l, nodeid);
+			if ((i == 0) && ( gf(gaddag[nodeid]))) {
+				matchcount++;
+				VERB(VNORM, " ") {
+					printlstr(word); printf("\n");
+				}
+				break;
+			}
+			nodeid = gc(gaddag[nodeid]);
+		} else {
+			break;
+		}
+	}
+DBG(DBG_LOOK, "i=%d found %d matches\n", i, matchcount);
+	return matchcount;
 }
 
 /* lookup using match iterator.
@@ -3788,35 +3924,35 @@ VERB(VVERB, "rv=%d for %d,%d %s pt=%d tiles=", rv, tm.row, tm.col, tm.dir == M_H
 		char tw[25]; char tlw[25]; int l; int nid; int rv;
 
 		strcpy(tw, "AA"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tlw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == 1);
 
 		strcpy(tw, "??"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tlw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == TWOLW);
 		strcpy(tw, "???"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == THREELW);
 		strcpy(tw, "????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == FOURLW);
 		strcpy(tw, "?????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == FIVELW);
 		strcpy(tw, "??????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == SIXLW);
 		strcpy(tw, "???????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == SEVENLW);
 		strcpy(tw, "????????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == EIGHTLW);
 		strcpy(tw, "?????????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == NINELW);
 		strcpy(tw, "??????????"); c2lstr(tw, tlw, 0); l = strlen(tw); nid = 1;
-		rv = m_lookup(l, tw, nid);
+		rv = bs_lookup(l, tlw, nid);
 		ASSERT(rv == TENLW);
 	}
 	{
@@ -4099,7 +4235,7 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			continue;
 		}
 		if (action & ACT_LOOKUP) {
-			rv = m_lookup(argmove.lcount, argmove.tiles, 1);
+			rv = bs_lookup(argmove.lcount, argmove.tiles, 1);
 			if (rv > 0) {
 				char *filled = strdup(argmove.tiles);
 				l2cstr(argmove.tiles, filled);
