@@ -1742,7 +1742,7 @@ genallat_c_r(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthi
 	letter_t pl;
 	int frontroom;
 
-DBG(DBG_GEN, "[%d] at %d,%d(%-d) a=(%d, %d) node=%d", depth, m->row, m->col, pos, ac,ac,nodeid) {
+DBG(DBG_GEN, "[%d] at %d,%d(%-d) a=(%d, %d) node=%d", depth, m->row, m->col, pos, ar,ac,nodeid) {
 	printf(" - word=\"");
 	printlstr(w);
 	printf("\", rack=\"");
@@ -1784,7 +1784,7 @@ DBG(DBG_GEN,"[%d]match %c at %d,%d(%d), nid=%d\n", depth, l2c(pl), m->row, m->co
 			if (! bl) rlp = pluckrack(r, pl);
 			if (gf(gaddag[curid]) && frontroom) {
 				m->score = finalscore(sct);
-				VERB(VNOISY, " ") {
+				VERB(VVERB, " ") {
 					printmove(m, 0);
 				}
 				/* record play */
@@ -1865,7 +1865,7 @@ DBG(DBG_GEN,"[%d]loop (suf)for bs=%x, rbs=%x, abs=%x, bitset[%d]=%x\n", depth, b
 				if (! bl) rlp = pluckrack(r, pl);
 				if (gf(gaddag[curid]) && nldn(b, currow, curcol, m->dir, 1)) {
 					m->score = finalscore(sct);
-					VERB(VNOISY, " ") {
+					VERB(VVERB, " ") {
 						printmove(m, -1);
 					}
 					/* record play */
@@ -1915,8 +1915,8 @@ genallat_c(position_t *P, move_t *mvs, int *mvsndx)
 	int ac = m->col;
 	int nodeid = 1;
 
-DBG(DBG_GEN, "new genallat %d,%d", ar,ac) {
-	printf("\", rack=\"");
+DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
+	printf(" rack=\"");
 	printlstr(r->tiles);
 	printf("\"\n");
 }
@@ -1938,9 +1938,11 @@ DBG(DBG_GEN, "new genallat %d,%d", ar,ac) {
 		nodeid = gotol(SEP, nodeid);
 		nodeid = gc(gaddag[nodeid]);
 		/* now call our recursive part. */
+DBG(DBG_GEN, "rcall A pos=%d depth=%d a=(%d,%d)\n", 1, i, ar, ac);
 		mvcnt = genallat_c_r(P, mvs, mvsndx, 1, nodeid, sct, i, ar, ac);
 	} else {
 		/* pass-thru */
+DBG(DBG_GEN, "rcall B pos=%d depth=%d a=(%d,%d)\n", 0, 0, ar, ac);
 		mvcnt = genallat_c_r(P, mvs, mvsndx, 0, nodeid, sct, 0, ar, ac);
 	}
 	return mvcnt;
@@ -3173,7 +3175,7 @@ DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
 	printlstr(P->r.tiles); printf("\n");
 }
 	P->m = emptymove;
-	P->mvcnt = genall_c(P, &mvs, &mvsndx);
+	P->mvcnt = genall_b(P, &mvs, &mvsndx);
 	P->stats.moves += P->mvcnt;
 	if (depth > P->stats.maxdepth) P->stats.maxdepth = depth;
 	if (P->mvcnt > P->stats.maxwidth) P->stats.maxwidth = P->mvcnt;
