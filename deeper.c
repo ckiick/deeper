@@ -153,7 +153,7 @@ lstr2bs(letter_t *lstr)
 {
 	int i = 0;
 	bs_t bs = 0;
-#ifndef NOTDEF
+#ifdef NOTDEF
 	while (lstr[i] != '\0') {
 		setbit(bs, lstr[i]-1);
 		i++;
@@ -1720,190 +1720,11 @@ addsct(scthingy_t *sct, letter_t l, int dir, space_t sp)
 	}
 }
 
-/* a more complex way to do this... with internal recursive routine. */
 
-/* recurisve part. */
-int
-genallat_c_r(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthingy_t sct, int depth, int ar, int ac)
-{
-	board_t *b = &(P->b);
-	move_t *m = &(P->m);
-	rack_t *r = &(P->r);
+/* try pre handler function again. move anchor in some cases. */
 
-	int movecnt = 0;
-	int curid;
-	int cid;
-	int sepid;
- 	letter_t *w = m->tiles;
-	int curcol;
-	int currow;
-	char *rlp;
-	bs_t rbs;
-	bs_t abs;
-	bs_t bl = 0;
-	bs_t bs;
-	letter_t pl;
-	int frontroom;
-
-DBG(DBG_GEN, "[%d] at %d,%d(%-d) a=(%d, %d) node=%d", depth, m->row, m->col, pos, ar,ac,nodeid) {
-	printf(" - word=\"");
-	printlstr(w);
-	printf("\", rack=\"");
-	printlstr(r->tiles);
-	printf("\"\n");
-}
-	ASSERT(strlen(w) == depth);
-	w[depth] = '\0';
-	w[depth+1] = '\0';
-	updatescore(&sct);
-	/* going "back" */
-	if (pos <= 0) {
-		abs = ALLPHABITS;
-		if (pos == 0) {
-			if (b->spaces[m->row][m->col].b.f.anchor & (1+m->dir)) {
-				abs = b->spaces[m->row][m->col].mbs[m->dir];
-			}
-		} else {
-			if (b->spaces[m->row][m->col].b.f.anchor) {
-DBG(DBG_GEN, "pruned anchor at %d,%d\n", m->row, m->col);
-				return movecnt;
-			}
-		}
-		frontroom = nse(b, ar, ac, m->dir, 1);
-		ASSERT(b->spaces[m->row][m->col].b.f.letter == '\0');
-		/* loop thruough all the possibilities. */
-		rbs = lstr2bs(r->tiles);
-		bl = 0;
-morebits:
-		bs = rbs & bitset[nodeid] & abs;
-		curid = nodeid;
-DBG(DBG_GEN,"[%d]loop (pre)for bs=%x, rbs=%x, abs=%x, bitset[%d]=%x\n", depth, bs, rbs, abs, nodeid, bitset[nodeid]);
-		while (pl = nextl(&bs, &curid)) {
-DBG(DBG_GEN,"[%d]match %c at %d,%d(%d), nid=%d\n", depth, l2c(pl), m->row, m->col, pos, curid);
-			w[depth] = pl | bl;
-			curid = gotol(pl, curid);
-			addsct(&sct, pl, m->dir, b->spaces[m->row][m->col]);
-			/* remove from rack */
-			if (! bl) rlp = pluckrack(r, pl);
-			if (gf(gaddag[curid]) && frontroom) {
-				m->score = finalscore(sct);
-				VERB(VVERB, " ") {
-					printmove(m, 0);
-				}
-				/* record play */
-				ASSERT(*mvsndx < MAXMVS);
-				mvs[*mvsndx] = *m;
-				revstr(mvs[*mvsndx].tiles);
-				*mvsndx += 1;
-				movecnt++;
-			}
-			cid = gc(gaddag[curid]);
-			if (nse(b, m->row, m->col, m->dir, -1)) {
-				m->row -= m->dir;
-				m->col -= (1-m->dir);
-/* recurse */
-DBG(DBG_GEN, "[%d]recurse 1 mvndx=%d, pos=%d, %d, %d, (%d, %d)\n", depth, *mvsndx, pos-1, cid, depth+1, ar, ac);
-				movecnt += genallat_c_r(P, mvs, mvsndx, pos-1, cid, sct, depth+1, ar, ac);
-				m->row += m->dir;
-				m->col += (1-m->dir);
-			}
-			/* since we are going "back", have to do SEP.*/
-			if ((SEPBIT & bitset[cid]) && isroom(ar, ac, m->dir, 1)) {
-				sepid = gotol(SEP, cid);
-				sepid = gc(gaddag[sepid]);
-				revstr(m->tiles);
-DBG(DBG_GEN, "[%d]recurse 2 %d, %d, %d, %d, (%d, %d)\n",depth, *mvsndx, 1, sepid, depth+1, ar, ac);
-				movecnt += genallat_c_r(P, mvs, mvsndx, 1, sepid, sct, depth+1, ar, ac);
-				revstr(m->tiles);
-			}
-			/* put it back on rack. */
-			if (!bl) *rlp = pl;
-		}
-		if ((! bl) && (rbs & UBLBIT)) {
-			bl = BB;
-			rbs = ALLPHABITS;
-			rlp = pluckrack(r, UBLANK);
-			/* do it all again. */
-			goto morebits;
-		}
-		if (bl) {
-			*rlp = UBLANK;
-		}
-		w[depth] = '\0';
-	} else {
-		currow = ar + pos * m->dir;
-		curcol = ac + pos * (1-m->dir);
-		pl = b->spaces[currow][curcol].b.f.letter;
-		if (pl) {
-			if (bitset[nodeid] & l2b(pl)) {
-				w[depth] = pl;
-				curid = gotol(pl, nodeid);
-				cid = gc(gaddag[curid]);
-				sct.ts = lval(pl);
-				sct.tbs = sct.ts;
-				sct.wm = 1;
-				sct.play = 0;
-				sct.lms = 1;
-DBG(DBG_GEN, "[%d]recurse 3 %d, %d, %d, %d, (%d, %d)\n", depth, *mvsndx, pos+1, cid, depth+1, ar, ac);
-				movecnt += genallat_c_r(P, mvs, mvsndx, pos+1, cid, sct, depth+1, ar, ac);
-			}
-		} else {
-			if (b->spaces[m->row][m->col].b.f.anchor & (1+m->dir)) {
-				abs = b->spaces[m->row][m->col].mbs[m->dir];
-			} else {
-				abs = ALLPHABITS;
-			}
-			/* going forward. */
-			rbs = lstr2bs(r->tiles);
-			bl = 0;
-yetmorebits:
-			bs = rbs & bitset[nodeid] & abs;
-			curid = nodeid;
-DBG(DBG_GEN,"[%d]loop (suf)for bs=%x, rbs=%x, abs=%x, bitset[%d]=%x\n", depth, bs, rbs, abs, nodeid, bitset[nodeid]);
-			while (pl = nextl(&bs, &curid)) {
-				w[depth] = pl | bl;
-				curid = gotol(pl, curid);
-				addsct(&sct, pl, m->dir, b->spaces[currow][curcol]);
-				/* remove from rack */
-				if (! bl) rlp = pluckrack(r, pl);
-				if (gf(gaddag[curid]) && nldn(b, currow, curcol, m->dir, 1)) {
-					m->score = finalscore(sct);
-					VERB(VVERB, " ") {
-						printmove(m, -1);
-					}
-					/* record play */
-					ASSERT(*mvsndx < MAXMVS);
-					mvs[*mvsndx] = *m;
-					*mvsndx += 1;
-					movecnt++;
-				}
-				cid = gc(gaddag[curid]);
-				if (isroom(currow, curcol, m->dir, 1)) {
-					/* recurse */
-DBG(DBG_GEN, "[%d]recurse 4 %d, %d, %d, %d, (%d, %d)\n", depth, *mvsndx, pos+1, cid, depth+1, ar, ac);
-					movecnt += genallat_c_r(P, mvs, mvsndx, pos+1, cid, sct, depth+1, ar, ac);
-				}
-				/* put it back on rack. */
-				if (!bl) *rlp = pl;
-			}
-			if ((! bl) && (rbs & UBLBIT)) {
-				bl = BB;
-				rbs = ALLPHABITS;
-				rlp = pluckrack(r, UBLANK);
-				/* do it all again. */
-				goto yetmorebits;
-			}
-			if (bl) {
-				*rlp = UBLANK;
-			}
-		}
-		w[depth] = '\0';
-	}
-DBG(DBG_GEN, "pop %d\n", depth);
-	return movecnt;
-}
-
-/* non-recursive part. */
+/* try using _b. */
+/* non-recursive part.  take care of played tiles first */
 int
 genallat_c(position_t *P, move_t *mvs, int *mvsndx)
 {
@@ -1917,6 +1738,7 @@ genallat_c(position_t *P, move_t *mvs, int *mvsndx)
 	int ar = m->row;
 	int ac = m->col;
 	int nodeid = 1;
+	bs_t rbs;
 
 DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 	printf(" rack=\"");
@@ -1924,7 +1746,9 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 	printf("\"\n");
 }
 
+	rbs = lstr2bs(P->r.tiles);
 	/* we are first, so lets look around. */
+//if (0) 
 	if (!nldn(b, m->row, m->col, m->dir, -1)) {
 		int i = 0; ac = m->col, ar = m->row;
 		/* played tile on left. use it as prefix. */
@@ -1941,12 +1765,13 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 		nodeid = gotol(SEP, nodeid);
 		nodeid = gc(gaddag[nodeid]);
 		/* now call our recursive part. */
-DBG(DBG_GEN, "rcall A pos=%d depth=%d a=(%d,%d)\n", 1, i, ar, ac);
-		mvcnt = genallat_c_r(P, mvs, mvsndx, 1, nodeid, sct, i, ar, ac);
+DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
+		mvcnt = genallat_b(P, mvs, mvsndx, i, nodeid, sct, i, rbs);
+		for (; i>=0;i--) m->tiles[i]='\0';
 	} else {
 		/* pass-thru */
-DBG(DBG_GEN, "rcall B pos=%d depth=%d a=(%d,%d)\n", 0, 0, ar, ac);
-		mvcnt = genallat_c_r(P, mvs, mvsndx, 0, nodeid, sct, 0, ar, ac);
+DBG(DBG_GEN, "rcall B pos=%d depth=%d rbs=%x\n", 0, 0, rbs);
+		mvcnt = genallat_b(P, mvs, mvsndx, 0, nodeid, sct, 0, rbs);
 	}
 	return mvcnt;
 }
@@ -1997,7 +1822,8 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), currow,curcol,pos, nodeid)
 		prelen = ndx + 1;
 	}
 	/* if NOT first, don't redo anchors */
-	if ((ndx > 0) && b->spaces[currow][curcol].b.f.anchor) {
+//	if ((sct.played > 0) && b->spaces[currow][curcol].b.f.anchor) {
+	if ((side < 0) && (ndx > 0) && b->spaces[currow][curcol].b.f.anchor){
 DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 		return movecnt;
 	}
@@ -2138,7 +1964,7 @@ DBG(DBG_GEN, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
 }
 				movecnt += genallat_b(P, mvs, mvsndx, prelen, cid, sct, depth+1, rbs);
 			} else {
-DBG(DBG_GEN, "no room! no room! at %d %d dir=%d\n", currow, curcol, m->dir);
+DBG(DBG_GEN, "no room! no room! at %d %d (prelen=%d)dir=%d\n", currow, curcol, prelen, m->dir);
 			}
 		} else {
 DBG(DBG_GEN, "no SEP at nid %d\n", cid);
@@ -2154,6 +1980,7 @@ int
 genall_c(position_t *P, move_t **mvs, int *mvsndx)
 {
 	int r, c, dir, moves = 0;
+	bs_t rbs;
 
 	if (*mvs == NULL) {
 		*mvs = (move_t *)malloc( sizeof(move_t) * MAXMVS);
@@ -2164,12 +1991,14 @@ genall_c(position_t *P, move_t **mvs, int *mvsndx)
 	}
 	bzero(*mvs, sizeof(move_t)*MAXMVS);
 	*mvsndx = 0;
+	rbs = lstr2bs(P->r.tiles);
 
 	if (P->sc == -1) {
 		P->sc = 0;
 		P->m = emptymove;
 		P->m.row = STARTR; P->m.col = STARTC; P->m.dir = M_HORIZ;
 		moves = genallat_c(P, *mvs, mvsndx);
+//		moves = genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0, rbs);
 DBG(DBG_GEN, "genall made %d start moves\n", moves);
 		return moves;
 	}
@@ -2180,10 +2009,11 @@ DBG(DBG_GEN, "genall made %d start moves\n", moves);
 		for (r = 0; r < BOARDY; r++) {
 			for (c = 0; c < BOARDX; c++) {
 				if (P->b.spaces[r][c].b.f.anchor) {
-					P->m = emptymove;
 					P->m.row = r; P->m.col = c;
 					P->m.dir = dir;
-					moves = genallat_c(P, *mvs, mvsndx);
+
+					moves += genallat_c(P, *mvs, mvsndx);
+//					moves += genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0, rbs);
 				}
 			}
 		}
@@ -2510,7 +2340,8 @@ DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 		qsort(P.r.tiles, strlen(P.r.tiles), 1, lcmp);
 		mvsndx = 0;
 		bzero(mvs, sizeof(move_t)*MAXMVS);
-		mvcnt = genall_b(&P, &mvs, &mvsndx);
+//		mvcnt = genall_b(&P, &mvs, &mvsndx);
+		mvcnt = genall_c(&P, &mvs, &mvsndx);
 	}
 	/* correct for leftover letters. */
 	subscore = unbonus(&(P.r), globalbag, P.bagndx);
@@ -2689,7 +2520,8 @@ DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
 	printlstr(P->r.tiles); printf("\n");
 }
 	P->m = emptymove;
-	P->mvcnt = genall_b(P, &mvs, &mvsndx);
+//	P->mvcnt = genall_b(P, &mvs, &mvsndx);
+	P->mvcnt = genall_c(P, &mvs, &mvsndx);
 	P->stats.moves += P->mvcnt;
 	if (depth > P->stats.maxdepth) P->stats.maxdepth = depth;
 	if (P->mvcnt > P->stats.maxwidth) P->stats.maxwidth = P->mvcnt;

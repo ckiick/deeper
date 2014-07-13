@@ -23,8 +23,8 @@ prof:	deeper-prof
 	rm -f gmon.out deeper.gc* mon.out
 	./deeper-prof -T 5 -b A -n 1 -t -ss
 	gcov deeper.c
-	ggprof -b -c ./deeper-prof > gprof.out
-	ggprof -b -l ./deeper-prof >> gprof.out
+	gprof -b -c ./deeper-prof > gprof.out
+	gprof -b -l ./deeper-prof >> gprof.out
 	head -23 gprof.out
 
 perf:	deeper-nd
