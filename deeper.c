@@ -1748,9 +1748,8 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 
 	rbs = lstr2bs(P->r.tiles);
 	/* we are first, so lets look around. */
-//if (0) 
 	if (!nldn(b, m->row, m->col, m->dir, -1)) {
-		int i = 0; ac = m->col, ar = m->row;
+		int i = 0;
 		/* played tile on left. use it as prefix. */
 		while (!nldn(b, m->row, m->col, m->dir, -1)) {
 			m->row -= m->dir; m->col -= (1-m->dir);
@@ -1767,6 +1766,21 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 		/* now call our recursive part. */
 DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 		mvcnt = genallat_b(P, mvs, mvsndx, i, nodeid, sct, i, rbs);
+		for (; i>=0;i--) m->tiles[i]='\0';
+	} else if (!nldn(b, m->row, m->col, m->dir, 1)) {
+		/* look on the other side. */
+		int i = 0; int cr = m->row; int cc = m->col;
+		while (!nldn(b, cr, cc, m->dir, 1)) {
+			cr += m->dir; cc+= (1-m->dir);
+			pl = b->spaces[cr][cc].b.f.letter;
+			m->tiles[i] = pl; i++;
+			nodeid = gotol(deblank(m->tiles[i]), nodeid);
+			nodeid = gc(gaddag[nodeid]);
+			sct.ttl_ts += lval(pl);
+		}
+		sct.ttl_tbs = sct.ttl_ts;
+DBG(DBG_GEN, "rcall C pos=%d depth=%d rbs=%x\n", 0, i, rbs);
+		mvcnt = genallat_b(P, mvs, mvsndx, 0, nodeid, sct, i, rbs);
 		for (; i>=0;i--) m->tiles[i]='\0';
 	} else {
 		/* pass-thru */
@@ -1823,7 +1837,7 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), currow,curcol,pos, nodeid)
 	}
 	/* if NOT first, don't redo anchors */
 //	if ((sct.played > 0) && b->spaces[currow][curcol].b.f.anchor) {
-	if ((side < 0) && (ndx > 0) && b->spaces[currow][curcol].b.f.anchor){
+	if ((side < 0) && (ndx > 0) && (sct.played > 0) && b->spaces[currow][curcol].b.f.anchor){
 DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 		return movecnt;
 	}
@@ -1919,6 +1933,15 @@ DBG(DBG_GEN, "[%d]Gen gave id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
 				VERB(VNOISY, " ") {
 					printmove(m, pos);
 				}
+/* stop on specific word. */
+{
+	letter_t sword[10] = "TREAT";
+	letter_t slstr[10];
+	c2lstr(sword, slstr, JUSTPLAY);
+	if (! strcmp(m->tiles, slstr)) {
+printf("debug me!\n");
+	}
+}
 				/* record play */
 				ASSERT(*mvsndx < MAXMVS);
 				mvs[*mvsndx] = *m;
@@ -2340,8 +2363,8 @@ DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 		qsort(P.r.tiles, strlen(P.r.tiles), 1, lcmp);
 		mvsndx = 0;
 		bzero(mvs, sizeof(move_t)*MAXMVS);
-//		mvcnt = genall_b(&P, &mvs, &mvsndx);
-		mvcnt = genall_c(&P, &mvs, &mvsndx);
+		mvcnt = genall_b(&P, &mvs, &mvsndx);
+//		mvcnt = genall_c(&P, &mvs, &mvsndx);
 	}
 	/* correct for leftover letters. */
 	subscore = unbonus(&(P.r), globalbag, P.bagndx);
@@ -2520,8 +2543,8 @@ DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
 	printlstr(P->r.tiles); printf("\n");
 }
 	P->m = emptymove;
-//	P->mvcnt = genall_b(P, &mvs, &mvsndx);
-	P->mvcnt = genall_c(P, &mvs, &mvsndx);
+	P->mvcnt = genall_b(P, &mvs, &mvsndx);
+//	P->mvcnt = genall_c(P, &mvs, &mvsndx);
 	P->stats.moves += P->mvcnt;
 	if (depth > P->stats.maxdepth) P->stats.maxdepth = depth;
 	if (P->mvcnt > P->stats.maxwidth) P->stats.maxwidth = P->mvcnt;
