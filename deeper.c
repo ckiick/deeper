@@ -1849,7 +1849,7 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", strlen(w), currow,curcol,pos, nodeid)
 		prelen = ndx + 1;
 	}
 	/* if NOT first, don't redo anchors */
-//	if ((sct.played > 0) && b->spaces[currow][curcol].b.f.anchor) {
+//	if ((sct.played > 0) && b->spaces[currow][curcol].b.f.anchor) 
 	if ((side < 0) && (ndx > 0) && (sct.played > 0) && b->spaces[currow][curcol].b.f.anchor){
 DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.f.anchor);
 		return movecnt;
@@ -1996,7 +1996,7 @@ DBG(DBG_GEN, "no SEP at nid %d\n", cid);
 		}
 	}
 	w[ndx] = '\0';
-DBG(DBG_GEN, "[%d] genallat returning %d moves\n", ndx, movecnt);
+DBG(DBG_GEN, "[%d] genallat for %d,%d/%d returning %d moves\n", ndx, m->row, m->col, m->dir, movecnt);
 	return movecnt;
 }
 
@@ -2365,8 +2365,8 @@ DBG(DBG_GREED, "genning all at %d, %d with rack ", P.m.row, P.m.col) {
 		qsort(P.r.tiles, strlen(P.r.tiles), 1, lcmp);
 		mvsndx = 0;
 		bzero(mvs, sizeof(move_t)*MAXMVS);
-		mvcnt = genall_b(&P, &mvs, &mvsndx);
-//		mvcnt = genall_c(&P, &mvs, &mvsndx);
+//		mvcnt = genall_b(&P, &mvs, &mvsndx);
+		mvcnt = genall_c(&P, &mvs, &mvsndx);
 	}
 	/* correct for leftover letters. */
 	subscore = unbonus(&(P.r), globalbag, P.bagndx);
@@ -2545,8 +2545,8 @@ DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
 	printlstr(P->r.tiles); printf("\n");
 }
 	P->m = emptymove;
-	P->mvcnt = genall_b(P, &mvs, &mvsndx);
-//	P->mvcnt = genall_c(P, &mvs, &mvsndx);
+//	P->mvcnt = genall_b(P, &mvs, &mvsndx);
+	P->mvcnt = genall_c(P, &mvs, &mvsndx);
 	P->stats.moves += P->mvcnt;
 	if (depth > P->stats.maxdepth) P->stats.maxdepth = depth;
 	if (P->mvcnt > P->stats.maxwidth) P->stats.maxwidth = P->mvcnt;
