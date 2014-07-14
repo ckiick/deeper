@@ -106,6 +106,7 @@ int strat = 0;		// move choosing strategy.
 int dostats = 0;	// how much stat info to report.
 
 /* job/process control */
+int dtrap = 0;			// debugger trap counter
 int globaldone = 0;		// set to stop all threads.
 
 void
@@ -1755,31 +1756,43 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 			m->row -= m->dir; m->col -= (1-m->dir);
 			pl = b->spaces[m->row][m->col].b.f.letter;
 			m->tiles[i] = pl; i++;
-			nodeid = gotol(deblank(m->tiles[i]), nodeid);
+			nodeid = gotol(deblank(pl), nodeid);
 			nodeid = gc(gaddag[nodeid]);
 			sct.ttl_ts += lval(pl);
 		}
 		sct.ttl_tbs = sct.ttl_ts;
 		/* in this case, we have to change direction. */
-		nodeid = gotol(SEP, nodeid);
-		nodeid = gc(gaddag[nodeid]);
+		if (bitset[nodeid] & SEPBIT) {
+			nodeid = gotol(SEP, nodeid);
+			nodeid = gc(gaddag[nodeid]);
+		} else {
+			/* no valid move here. */
+			for (; i>=0;i--) m->tiles[i]='\0';
+			return 0;
+		}
 		/* now call our recursive part. */
 DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 		mvcnt = genallat_b(P, mvs, mvsndx, i, nodeid, sct, i, rbs);
 		for (; i>=0;i--) m->tiles[i]='\0';
 	} else if (!nldn(b, m->row, m->col, m->dir, 1)) {
 		/* look on the other side. */
-		int i = 0; int cr = m->row; int cc = m->col;
+		int i = 0, j= 0; int cr = m->row; int cc = m->col;
+		/* find the 'end' of the played tiles */
 		while (!nldn(b, cr, cc, m->dir, 1)) {
 			cr += m->dir; cc+= (1-m->dir);
+			j++;
+		}
+		/* now traverse gaddag back to original spot.*/
+		for (; j > 0; j--) {
 			pl = b->spaces[cr][cc].b.f.letter;
 			m->tiles[i] = pl; i++;
-			nodeid = gotol(deblank(m->tiles[i]), nodeid);
+			nodeid = gotol(deblank(pl), nodeid);
 			nodeid = gc(gaddag[nodeid]);
 			sct.ttl_ts += lval(pl);
+			cr -= m->dir; cc-= (1-m->dir);
 		}
 		sct.ttl_tbs = sct.ttl_ts;
-DBG(DBG_GEN, "rcall C pos=%d depth=%d rbs=%x\n", 0, i, rbs);
+DBG(DBG_GEN, "rcall C pos=%d depth=%d rbs=%x, mxy=%d,%d cxy=%d,%d nid=%d\n", 0, i, rbs, m->row, m->col, cr, cc, nodeid);
 		mvcnt = genallat_b(P, mvs, mvsndx, 0, nodeid, sct, i, rbs);
 		for (; i>=0;i--) m->tiles[i]='\0';
 	} else {
@@ -1933,15 +1946,6 @@ DBG(DBG_GEN, "[%d]Gen gave id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
 				VERB(VNOISY, " ") {
 					printmove(m, pos);
 				}
-/* stop on specific word. */
-{
-	letter_t sword[10] = "TREAT";
-	letter_t slstr[10];
-	c2lstr(sword, slstr, JUSTPLAY);
-	if (! strcmp(m->tiles, slstr)) {
-printf("debug me!\n");
-	}
-}
 				/* record play */
 				ASSERT(*mvsndx < MAXMVS);
 				mvs[*mvsndx] = *m;
@@ -1952,7 +1956,6 @@ printf("debug me!\n");
 			}
 		}
 		cid = gc(gaddag[curid]);
-//printf("you are here\n");
 		if (isroom(currow, curcol, m->dir, side)) {
 			/* recurse */
 DBG(DBG_GEN, "recurse 1 (%d, %d,%d, word, rack, id=%d)", m->row, m->col, pos, cid) {
@@ -1970,7 +1973,6 @@ DBG(DBG_GEN, "recurse 1 (%d, %d,%d, word, rack, id=%d)", m->row, m->col, pos, ci
 				m->row += m->dir;
 			}
 		} else {
-//printf ("ran out of room %d, %d/ dir=%d, side = %d\n", currow, curcol, m->dir, side);
 }
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
