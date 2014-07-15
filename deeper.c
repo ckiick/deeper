@@ -510,6 +510,7 @@ initstuff()
 		vprintf(VNORM, "No bag contents specified\n");
 		return 1;
 	}
+	baglen = strlen(bagstr);
 	ASSERT((bagtag != '\0' ) && (bagname != NULL) && (bagstr != NULL));
 	DBG(DBG_BAG, "bag [%c]%s = %s\n", bagtag, bagname, bagstr);
 	globalbag = strdup(bagstr);	// to get size allocated
@@ -2020,7 +2021,7 @@ genall_c(position_t *P, move_t **mvs, int *mvsndx)
 
 	if (P->sc == -1) {
 		P->sc = 0;
-		P->m = emptymove;
+//		P->m = emptymove;
 		P->m.row = STARTR; P->m.col = STARTC; P->m.dir = M_HORIZ;
 		moves = genallat_c(P, *mvs, mvsndx);
 //		moves = genallat_b(P, *mvs, mvsndx, 0, 1, newsct, 0, rbs);
