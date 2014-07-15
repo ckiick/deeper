@@ -1,4 +1,4 @@
-
+//  #define NEWBEE
 /*
  * deep scrabble solitaire searcher.
  * principles:
@@ -96,6 +96,7 @@ unsigned long dflags = 0;	// for DBG statements
 int stats = 0;			// report stats while running
 char *gcgfn = NULL;		// save result here
 gstats_t globalstats;		// global statistics
+unsigned long gmcnt = 0;	// global mv counter.
 
 /* other options */
 int doscore = 0;	// report scores as well
@@ -1676,6 +1677,9 @@ printmove(move_t *m, int rev)
 void
 printpos(position_t P)
 {
+if (dtrap == 0) {
+	dtrap = 1;
+} 
 	vprintf(VNORM, "position[%d]=%d",  P.depth, P.sc);
 	VERB(VNORM, " move %d of %d ", P.mvndx, P.mvcnt) {
 		printmove(&(P.m), -1);
@@ -1740,6 +1744,7 @@ genallat_c(position_t *P, move_t *mvs, int *mvsndx)
 	int ar = m->row;
 	int ac = m->col;
 	int nodeid = 1;
+	int cid;
 	bs_t rbs;
 
 DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
@@ -1752,6 +1757,7 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 	/* we are first, so lets look around. */
 	if (!nldn(b, m->row, m->col, m->dir, -1)) {
 		int i = 0;
+#ifdef NEWBEE
 		/* played tile on left. use it as prefix. */
 		while (!nldn(b, m->row, m->col, m->dir, -1)) {
 			m->row -= m->dir; m->col -= (1-m->dir);
@@ -1771,6 +1777,7 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 			for (; i>=0;i--) m->tiles[i]='\0';
 			return 0;
 		}
+#endif
 		/* now call our recursive part. */
 DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 		mvcnt = genallat_b(P, mvs, mvsndx, i, nodeid, sct, i, rbs);
@@ -1778,6 +1785,8 @@ DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 	} else if (!nldn(b, m->row, m->col, m->dir, 1)) {
 		/* look on the other side. */
 		int i = 0, j= 0; int cr = m->row; int cc = m->col;
+		cid = nodeid;
+#ifdef NEWBEE
 		/* find the 'end' of the played tiles */
 		while (!nldn(b, cr, cc, m->dir, 1)) {
 			cr += m->dir; cc+= (1-m->dir);
@@ -1787,14 +1796,15 @@ DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 		for (; j > 0; j--) {
 			pl = b->spaces[cr][cc].b.f.letter;
 			m->tiles[i] = pl; i++;
-			nodeid = gotol(deblank(pl), nodeid);
-			nodeid = gc(gaddag[nodeid]);
+			nodeid = gotol(deblank(pl), cid);
+			cid = gc(gaddag[nodeid]);
 			sct.ttl_ts += lval(pl);
 			cr -= m->dir; cc-= (1-m->dir);
 		}
 		sct.ttl_tbs = sct.ttl_ts;
+#endif
 DBG(DBG_GEN, "rcall C pos=%d depth=%d rbs=%x, mxy=%d,%d cxy=%d,%d nid=%d\n", 0, i, rbs, m->row, m->col, cr, cc, nodeid);
-		mvcnt = genallat_b(P, mvs, mvsndx, 0, nodeid, sct, i, rbs);
+		mvcnt = genallat_b(P, mvs, mvsndx, 0, cid, sct, i, rbs);
 		for (; i>=0;i--) m->tiles[i]='\0';
 	} else {
 		/* pass-thru */
@@ -1859,6 +1869,7 @@ DBG(DBG_GEN, "[%d]time to prune, anchor=%d\n", ndx, b->spaces[currow][curcol].b.
 
 	updatescore(&sct);
 	while (rlp != NULL) {
+
 DBG(DBG_GEN, "[%d]inline gen rbs=%x, bl=%d, bs=%x, curid=%d, rlp=%p lp=%c\n", ndx, rbs, bl,  bs, curid, rlp, l2c(w[ndx])) {
 
 }
@@ -1944,15 +1955,16 @@ DBG(DBG_GEN, "[%d]Gen gave id=%d, l=%c and rack ", ndx, curid, l2c(w[ndx])) {
 /* here is where we have trouble. Check the other end. */
 			    if ((pos > 0) || (nldn(b, currow + ndx * m->dir, curcol + ndx * (1 - m->dir), m->dir, 1))) {
 				m->score = finalscore(sct);
-				VERB(VNOISY, " ") {
+				VERB(VNOISY, "at_b:") {
 					printmove(m, pos);
 				}
 				/* record play */
 				ASSERT(*mvsndx < MAXMVS);
 				mvs[*mvsndx] = *m;
 				fixmove( &(mvs[*mvsndx]), pos);
-				*mvsndx  += 1;
+				*mvsndx += 1;
 				movecnt++;
+gmcnt++;
 			    }
 			}
 		}
@@ -1977,10 +1989,14 @@ DBG(DBG_GEN, "recurse 1 (%d, %d,%d, word, rack, id=%d)", m->row, m->col, pos, ci
 }
 		/* have to handle the ^ */
 		if ((pos <= 0) && (SEPBIT & bitset[cid])) {
+//		if ((pos <= 0) && (SEPBIT & bitset[curid]) && (sct.played > 0)) 
 			if (nldn(b, currow, curcol, m->dir, -1) &&
 				isroom(currow + dr*(prelen-1) , curcol + dc*(prelen-1), m->dir, 1)) {
 				sepid = gotol(SEP, cid);
-DBG(DBG_GEN, "sep at %d from %d\n", sepid, cid);
+//				sepid = gotol(SEP, curid);
+DBG(DBG_GEN, "sep at %d from %d with rack= ", sepid, cid) {
+	printlstr(r->tiles); printf(" word= "); printlstr(w); printf("\n");
+}
 				cid = gc(gaddag[sepid]);
 				if (cid == 0) continue;
 DBG(DBG_GEN, "recurse 3 (%d, %d, 1, word, rack, id=%d", m->row, m->col, cid) {
@@ -2044,8 +2060,8 @@ DBG(DBG_GEN, "genall made %d start moves\n", moves);
 			}
 		}
 	}
-
-DBG(DBG_GEN, "genall made %d total moves\n", moves);
+	ASSERT(moves == *mvsndx);
+DBG(DBG_GEN, "genall made %d total moves (%d mvs)\n", moves, *mvsndx);
 	return moves;
 }
 
@@ -2505,6 +2521,7 @@ creep(position_t *P)
 	rv = lah(P, 0, level);
 	aft = gethrtime();
 	while (rv) {
+mcnt += P->stats.moves;
 		P->stats.evtime += aft - fore;
 		P->depth++;
 		printpos(*P);
@@ -2520,6 +2537,7 @@ DBG(DBG_LAH, "creep mv %dscore =%d P->next = %p\n", P->depth, P->sc,  P->next);
 		rv = lah(P, 0, level);
 		aft = gethrtime();
 	}
+vprintf(VNORM, "total moves is %d\n", mcnt);
 	return P->sc;
 }
 
@@ -2552,7 +2570,7 @@ DBG(DBG_LAH, "enter depth=%d limit=%d rack=", depth, limit) {
 	if (depth > P->stats.maxdepth) P->stats.maxdepth = depth;
 	if (P->mvcnt > P->stats.maxwidth) P->stats.maxwidth = P->mvcnt;
 
-DBG(DBG_LAH, "[%d]genall gave %d moves\n",depth, P->mvcnt);
+DBG(DBG_LAH, "[%d]genall gave %d (%d)moves\n",depth, P->mvcnt, mvsndx);
 	if (P->mvcnt == 0) {
 		/* there were no more moves. EOG */
 		P->sc -= unbonus(&(P->r), globalbag, P->bagndx);
@@ -2561,6 +2579,7 @@ DBG(DBG_LAH, "[%d]genall gave %d moves\n",depth, P->mvcnt);
 		return 0;
 	}
 	if (depth >= limit) {
+ASSERT(mvsndx == P->mvcnt);
 		int score = veep_b(P, mvs, P->mvcnt);
 		P->sc += score;
 		if (score > P->stats.wordhs) P->stats.wordhs = score;
@@ -2587,11 +2606,14 @@ DBG(DBG_LAH, "[%d]recurse with move %d=", depth,i) {
 		iP.sc += iP.m.score;
 		if (iP.m.score > iP.stats.wordhs) iP.stats.wordhs = iP.m.score;
 		*newP = iP; newP->next = NULL;
+		newP->stats.moves = 0;
 		fore = gethrtime();
 		rv = lah(newP, depth+1, limit);
 		aft = gethrtime();
 		newP->stats.evtime = aft - fore;
-		P->stats.moves += newP->mvcnt;
+//		P->stats.moves += newP->mvcnt;
+		P->stats.moves += newP->stats.moves;
+		
 		P->stats.evtime += newP->stats.evtime;
 		if (newP->stats.maxdepth > P->stats.maxdepth)
 			P->stats.maxdepth = newP->stats.maxdepth;
@@ -3474,7 +3496,7 @@ vprintf(VNORM, "elapsed time is %lld nsec (%lld sec)\n", totaltime, totaltime/10
 	STAT(STLOW, "%llu moves in %llu nsec = %llu ns/m\n", startp.stats.moves, startp.stats.evtime,  startp.stats.evtime / startp.stats.moves);
 	if (totalscore > 0)
 		vprintf(VNORM, "total score is %d\n", totalscore);
-
+vprintf(VNORM, "global move count = %lu\n", gmcnt);
 	if (errs) {
 		return -errs;
 	} else {
