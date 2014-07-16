@@ -1,4 +1,3 @@
-//  #define NEWBEE
 /*
  * deep scrabble solitaire searcher.
  * principles:
@@ -336,7 +335,17 @@ getdict(char *name)
 		return -3;
 	}
 	g_cnt = len / sizeof(gn_t);
-	gaddag = (gn_t *)mmap(0, len, PROT_READ, MAP_SHARED, dfd, 0);
+	ASSERT(len < GDSIZE);
+#if defined(__sun)
+#define MMFLAGS	MAP_SHARED
+#else
+// #define MMFLAGS	MAP_SHARED | MAP_HUGETLB | MAP_LOCKED | MAP_POPULATE
+// #define MMFLAGS	MAP_SHARED | MAP_LOCKED | MAP_POPULATE
+//#define MMFLAGS	MAP_SHARED | MAP_LOCKED
+//#define MMFLAGS	MAP_SHARED | MAP_HUGETLB
+#define MMFLAGS	MAP_SHARED
+#endif
+	gaddag = (gn_t *)mmap(0, GDSIZE, PROT_READ, MMFLAGS, dfd, 0);
 	if (gaddag == MAP_FAILED) {
 		VERB(VNORM, "failed to mmap %d bytes of gaddag\n", len) {
 			perror("mmap");
@@ -370,7 +379,8 @@ getdict(char *name)
 		vprintf(VNORM, "bitset data does not match gaddag size\n");
 		return -5;
 	}
-	bitset = (bs_t *)mmap(0, len, PROT_READ, MAP_SHARED, bsfd, 0);
+	ASSERT(len < GDSIZE);
+	bitset = (bs_t *)mmap(0, GDSIZE, PROT_READ, MAP_SHARED, bsfd, 0);
 	if (bitset == MAP_FAILED) {
 		VERB(VNORM, "failed to mmap %d bytes of bitset\n", len) {
 			perror("mmap");
@@ -1757,7 +1767,6 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 	/* we are first, so lets look around. */
 	if (!nldn(b, m->row, m->col, m->dir, -1)) {
 		int i = 0;
-#ifdef NEWBEE
 		/* played tile on left. use it as prefix. */
 		while (!nldn(b, m->row, m->col, m->dir, -1)) {
 			m->row -= m->dir; m->col -= (1-m->dir);
@@ -1777,7 +1786,6 @@ DBG(DBG_GEN, "new genallat %d,%d dir=%d", ar,ac, m->dir) {
 			for (; i>=0;i--) m->tiles[i]='\0';
 			return 0;
 		}
-#endif
 		/* now call our recursive part. */
 DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 		mvcnt = genallat_b(P, mvs, mvsndx, i, nodeid, sct, i, rbs);
@@ -1786,7 +1794,6 @@ DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 		/* look on the other side. */
 		int i = 0, j= 0; int cr = m->row; int cc = m->col;
 		cid = nodeid;
-#ifdef NEWBEE
 		/* find the 'end' of the played tiles */
 		while (!nldn(b, cr, cc, m->dir, 1)) {
 			cr += m->dir; cc+= (1-m->dir);
@@ -1802,7 +1809,6 @@ DBG(DBG_GEN, "rcall A pos=%d depth=%d rbs=%x\n", i, i, rbs);
 			cr -= m->dir; cc-= (1-m->dir);
 		}
 		sct.ttl_tbs = sct.ttl_ts;
-#endif
 DBG(DBG_GEN, "rcall C pos=%d depth=%d rbs=%x, mxy=%d,%d cxy=%d,%d nid=%d\n", 0, i, rbs, m->row, m->col, cr, cc, nodeid);
 		mvcnt = genallat_b(P, mvs, mvsndx, 0, cid, sct, i, rbs);
 		for (; i>=0;i--) m->tiles[i]='\0';
@@ -2537,7 +2543,7 @@ DBG(DBG_LAH, "creep mv %dscore =%d P->next = %p\n", P->depth, P->sc,  P->next);
 		rv = lah(P, 0, level);
 		aft = gethrtime();
 	}
-vprintf(VNORM, "total moves is %d\n", mcnt);
+vprintf(VVERB, "total moves is %d\n", mcnt);
 	return P->sc;
 }
 
@@ -3496,7 +3502,7 @@ vprintf(VNORM, "elapsed time is %lld nsec (%lld sec)\n", totaltime, totaltime/10
 	STAT(STLOW, "%llu moves in %llu nsec = %llu ns/m\n", startp.stats.moves, startp.stats.evtime,  startp.stats.evtime / startp.stats.moves);
 	if (totalscore > 0)
 		vprintf(VNORM, "total score is %d\n", totalscore);
-vprintf(VNORM, "global move count = %lu\n", gmcnt);
+vprintf(VVERB, "global move count = %lu\n", gmcnt);
 	if (errs) {
 		return -errs;
 	} else {

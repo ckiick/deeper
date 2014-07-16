@@ -132,7 +132,7 @@ char coltags[BOARDX+1] = "ABCDEFGHIJKLMNO";
 #define DFNEND  ".gaddag"	// dict file name ending
 #define BSNEND  ".bitset"	// bitset file name ending
 #define DDFN    "ENABLE"	// default dict file name
-
+#define GDSIZE	(1024*1024*4)	// round up to 4Meg.
 typedef uint32_t gn_t;		// gaddag node
 typedef uint32_t bs_t;		// bitset
 
