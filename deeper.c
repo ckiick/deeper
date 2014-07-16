@@ -1826,6 +1826,7 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 				break;
 			}
 			currow += dr; curcol += dc;
+			snd = nldn(b, currow, curcol, m.dir, 1);
 		} else {
 			/* not in dict. return */
 			return movecnt;
@@ -1834,6 +1835,7 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 	sct.ttl_tbs = sct.ttl_ts;
 	w[ndx] = '\0';
 
+	ASSERT((currow >=0)&&(curcol>=0)&&(currow<BOARDX)&&(curcol<BOARDY));
 	if (pl) {
 		if (sct.played && gf(gaddag[nodeid])) {
 			/* it's a real word! */
