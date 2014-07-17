@@ -1,5 +1,3 @@
-#define NEWALL
-
 /*
  * deep scrabble solitaire searcher.
  * principles:
@@ -1866,20 +1864,21 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 	/* begin iterations. */
 	curid = nodeid;
 	bbs = bitset[curid];
+	sct.play = 1;
+	sct.wm =  b->spaces[currow][curcol].b.f.wm;
+	sct.tbs =  b->spaces[currow][curcol].b.f.lm;	/* setup for below */
+	sct.lms = b->spaces[currow][curcol].b.f.mls[m.dir];
 	if (b->spaces[currow][curcol].b.f.anchor & (1+m.dir)) {
 		bbs &= b->spaces[currow][curcol].mbs[m.dir];
 		sct.play += 1;
 	}
 	bs = rbs & bbs;
-	newm = m; newm.tiles[ndx+1] = '\0';
-	sct.wm =  b->spaces[currow][curcol].b.f.wm;
-	sct.tbs =  b->spaces[currow][curcol].b.f.lm;	/* setup for below */
-	sct.lms = b->spaces[currow][curcol].b.f.mls[m.dir];
-	sct.play = 1;
+	newm.tiles[ndx+1] = '\0';
 	snd = nldn(b, currow, curcol, m.dir, side);
 	room = isroom(currow, curcol, m.dir, side);
 	while ((pl = nextl(&bs, &curid)) != '\0') {
 		/* could be either direction. */
+		newm = m;
 		newm.tiles[ndx] = pl;
 		subsct = sct;
 		subsct.ts = lval(pl);
@@ -1948,7 +1947,10 @@ DBG(DBG_GEN, "recurse 2 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm
 	}
 	/* and, lastly, do the SEP thing */
 	if ((pos <= 0) && (bitset[nodeid] & SEPBIT)) {
-		if (isroom(currow + ndx *m.dir, curcol + ndx *(1-m.dir), m.dir, 1)) {
+		currow = m.row + (ndx * m.dir);
+		curcol = m.col + (ndx * (1-m.dir));
+		if (isroom(currow, curcol, m.dir, 1)) {
+// nonono..		newm.row = currow + dr; newm.col = curcol + dc;
 			newm.tiles[ndx] = '\0';
 			newr = r;
 			curid = gotol(SEP, nodeid);
@@ -1961,6 +1963,7 @@ DBG(DBG_GEN, "recurse 3 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm
 			movecnt += genallat_d(P, mvs, mvsndx, ndx, cid, subsct, ndx, rbs, newr, newm);
 		}
 	}
+DBG(DBG_GEN, "[%d] pop %d moves\n", ndx, movecnt);
 	return movecnt;
 }
 
@@ -2009,7 +2012,6 @@ DBG(DBG_GEN, "at %d,%d dir=%d", ar,ac, m->dir) {
 			for (; i>=0;i--) m->tiles[i]='\0';
 			return 0;
 		}
-		revstr(m->tiles);
 		/* now call our recursive part. */
 DBG(DBG_GEN, "rcall pre pos=%d depth=%d rbs=%x\n", i, i, rbs);
 		mvcnt += genallat_d(P, mvs, mvsndx, i, nodeid, sct, i, rbs, P->r, P->m);

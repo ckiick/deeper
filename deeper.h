@@ -3,6 +3,9 @@
  * program to do a deep search on a scrabble solitaire game.
  */
 
+#ifndef REV
+#define REV	99
+#endif
 /* most includes are in deeper.c. */
 #include <sys/types.h>
 #include <assert.h>
@@ -27,7 +30,10 @@ typedef uint64_t hrtime_t;
  * Can't quite do it with assert... so far.
  */
 #ifdef DEBUG
-#define	ASSERT(x)	assert(x)
+
+// #define	ASSERT(x)
+#define	ASSERT(x)	assert((x))
+
 #define DBG(f, fmt, ...)                   \
         if ((((f)&dflags)==(f)) ? (printf("%s:",__func__) + printf(fmt, ##__VA_ARGS__)) : 0)
 #else	/* DEBUG */
