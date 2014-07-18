@@ -338,21 +338,38 @@ getdict(char *name)
 	g_cnt = len / sizeof(gn_t);
 	ASSERT(len < GDSIZE);
 #if defined(__sun)
-#define MMFLAGS	MAP_SHARED
+#define MMFLAGS	MAP_SHARED | MAP_ALIGN
+	gaddag = (gn_t *)mmap((void *)GDSIZE, GDSIZE, PROT_READ, MMFLAGS, dfd, 0);
 #else
 // #define MMFLAGS	MAP_SHARED | MAP_HUGETLB | MAP_LOCKED | MAP_POPULATE
 // #define MMFLAGS	MAP_SHARED | MAP_LOCKED | MAP_POPULATE
 //#define MMFLAGS	MAP_SHARED | MAP_LOCKED
 //#define MMFLAGS	MAP_SHARED | MAP_HUGETLB
 #define MMFLAGS	MAP_SHARED
-#endif
 	gaddag = (gn_t *)mmap(0, GDSIZE, PROT_READ, MMFLAGS, dfd, 0);
+#endif
 	if (gaddag == MAP_FAILED) {
 		VERB(VNORM, "failed to mmap %d bytes of gaddag\n", len) {
 			perror("mmap");
 		}
 		return -4;
 	}
+#if defined(__sun)
+	{
+		struct memcntl_mha mha;
+		int rv;
+
+		mha.mha_cmd = MHA_MAPSIZE_VA;
+		mha.mha_flags = 0;
+		mha.mha_pagesize = GDSIZE;
+		rv = memcntl((caddr_t)gaddag, GDSIZE, MC_HAT_ADVISE, (char *)&mha, 0, 0);
+		if (rv != 0) {
+			VERB(VVERB, "failed to set gaddag pagesize to %lu\n", GDSIZE){
+				perror("memcntl");
+			}
+		}
+	}
+#endif	/* __sun */
 
 	strcpy(fullname, name);
 	strcat(fullname, BSNEND);
@@ -381,13 +398,33 @@ getdict(char *name)
 		return -5;
 	}
 	ASSERT(len < GDSIZE);
+#if defined(__sun)
+	bitset = (bs_t *)mmap((void *)GDSIZE, GDSIZE, PROT_READ, MMFLAGS, bsfd, 0);
+#else
 	bitset = (bs_t *)mmap(0, GDSIZE, PROT_READ, MAP_SHARED, bsfd, 0);
+#endif
 	if (bitset == MAP_FAILED) {
 		VERB(VNORM, "failed to mmap %d bytes of bitset\n", len) {
 			perror("mmap");
 		}
 		return -4;
 	}
+#if defined(__sun)
+	{
+		struct memcntl_mha mha;
+		int rv;
+
+		mha.mha_cmd = MHA_MAPSIZE_VA;
+		mha.mha_flags = 0;
+		mha.mha_pagesize = GDSIZE;
+		rv = memcntl((caddr_t)bitset, GDSIZE, MC_HAT_ADVISE, (char *)&mha, 0, 0);
+		if (rv != 0) {
+			VERB(VVERB, "failed to set bitset pagesize to %lu\n", GDSIZE){
+				perror("memcntl");
+			}
+		}
+	}
+#endif
 
 	return g_cnt;
 }
@@ -696,7 +733,7 @@ nextl(bs_t *bs, int *curid)
 
 	l = ffb(*bs);
 	if (l==0) return 0;
-	*curid += popc(idbs<<(32-l))-1;
+	*curid += popc( (uint32_t)(idbs<<((uint32_t)(32-l))) )-1;
 	clrbit(*bs, l-1);
 	return l;
 }
@@ -3066,8 +3103,7 @@ verify()
 		v = 0x0; rv = popc(v); ASSERT(rv == 0);
 		v = 0x1; rv = popc(v); ASSERT(rv == 1);
 		v = 0xFFFFFFFF; rv = popc(v);
-//printf("popc of %x is %d\n", v, rv);
-// ASSERT(rv == 32);
+		ASSERT(rv == 32);
 		v = 0xFFFF0000; rv = popc(v); ASSERT(rv == 16);
 		v = 0xF0F0F0F0; rv = popc(v); ASSERT(rv == 16);
 		v = 0x55555555; rv = popc(v); ASSERT(rv == 16);
@@ -3077,7 +3113,48 @@ verify()
 			rv = popc(v);
 			ASSERT(rv == 1);
 		}
+		rv = popc (ALLPHABITS << 31);
+		ASSERT(rv == 1);
+		v = ALLPHABITS;
+		rv = popc (v << 31);
+		ASSERT(rv == 1);
+		v = bitset[1]; i = 1;
+		rv = popc (v << (32-1));
+		ASSERT(rv == 1);
+		rv = popc (v << (32-i));
+		ASSERT(rv == 1);
+	}
+	{
+		/* test ffs */
+		bs_t ts; int rv; int i;
+		bs_t *tbs;
 
+		for (i = 0; i < 32; i++) {
+			ts = 0x01 << i;
+			rv = ffs(ts);
+			ASSERT(rv == i+1);
+		}
+		for (i = 0; i < 32; i++) {
+			ts = 0xFFFFFFFF << i;
+			rv = ffs(ts);
+			ASSERT(rv == i+1);
+		}
+		ts = 0xFF0000FF;
+		tbs = &ts;
+		rv = ffs(*tbs);
+		ASSERT(rv == 1);
+	}
+	{
+		/* test nextl */
+		bs_t ts; int tid; letter_t rv; int i;
+		ts = 0xFFFFFFFF; tid = 1;
+		rv = nextl(&ts, &tid);
+		ASSERT(rv == 1);
+		ASSERT(ts == 0xFFFFFFFE);
+		ASSERT(tid == 1);
+		ts = (0x01 << 13);
+		rv = nextl(&ts, &tid);
+		ASSERT(rv == 14);
 	}
 	/* basic struct tests */
 	{

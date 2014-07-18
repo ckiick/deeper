@@ -4,8 +4,8 @@ GITPATH=/pkg/local/bin:/usr/bin
 # note: solaris cc doesn't like inline functions without prototypes.
 # there's an option to override it. need to find it.
 
-REV := $(shell PATH=$(GITPATH) git rev-list HEAD --count)
-#REV=41
+#REV := $(shell PATH=$(GITPATH) git rev-list HEAD --count)
+REV=77
 
 
 all:	dict gdexp deeper
