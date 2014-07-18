@@ -1111,7 +1111,7 @@ makemove7(board_t *b, move_t *m, int playthru, int umbs, rack_t *r)
 			if (playthru) {
 				if (m->tiles[i] != sp->b.f.letter) {
 					if (m->tiles[i] != DOT) {
-vprintf(VVERB, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+vprintf(VVERB, "warning[A]: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
 					}
 					m->tiles[i] = sp->b.f.letter;
 				}
@@ -1230,7 +1230,7 @@ DBG(DBG_MOVE, "making move ") {
 			if (playthru) {
 				if (m->tiles[i] != sp->b.f.letter) {
 					if (m->tiles[i] != DOT) {
-vprintf(VVERB, "warning: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
+vprintf(VVERB, "warning[B]: playthru %c(%d) doesn't match played %c(%d)\n", l2c(m->tiles[i]), m->tiles[i], l2c(sp->b.f.letter), sp->b.f.letter);
 					}
 					m->tiles[i] = sp->b.f.letter;
 				}
@@ -1873,7 +1873,7 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 		sct.play += 1;
 	}
 	bs = rbs & bbs;
-	newm.tiles[ndx+1] = '\0';
+//	newm.tiles[ndx+1] = '\0';
 	snd = nldn(b, currow, curcol, m.dir, side);
 	room = isroom(currow, curcol, m.dir, side);
 	while ((pl = nextl(&bs, &curid)) != '\0') {
@@ -1899,17 +1899,33 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 		}
 		if (room) {
 			rackem(&r, &newr, &newrbs, pl);
-			if (pos <= 0) {
-				newm.row = currow - dr; newm.col = curcol - dc;
-				newpos = pos;
-			} else {
-				newpos = pos + 1;
-			}
 			cid = gc(gaddag[curid]);
+			/* next move is next square. */
+			if (pos <=0 ) {
+				newm.row -= dr; newm.col -= dc;
+			}
 			/* finally, recurse */
-DBG(DBG_GEN, "recurse 1 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, newpos, ndx+1, newrbs, cid);
-			/* same board, new rack, fixed move, pos incremented  */
-			movecnt += genallat_d(P, mvs, mvsndx, newpos, cid, subsct, ndx + 1, newrbs, newr, newm);
+DBG(DBG_GEN, "recurse 1 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, pos, ndx+1, newrbs, cid);
+			/* same board, new rack, fixed move, ndx incremented  */
+			movecnt += genallat_d(P, mvs, mvsndx, pos, cid, subsct, ndx + 1, newrbs, newr, newm);
+		}
+		/* after placing a tile, do the SEP thing */
+		if ((pos <= 0) && (bitset[nodeid] & SEPBIT)) {
+//			currow = m.row + (ndx * m.dir);
+//			curcol = m.col + (ndx * (1-m.dir));	
+			currow += dr; curcol += dc;
+			if (isroom(currow, curcol, m.dir, 1)) {
+				newm.tiles[ndx] = '\0';
+				newr = r;
+				curid = gotol(SEP, nodeid);
+				cid = gc(gaddag[curid]);
+				subsct = sct;
+				subsct.ts = subsct.tbs = subsct.lms = subsct.play = 0;
+				subsct.wm=1;
+				revnstr(newm.tiles, ndx);
+	DBG(DBG_GEN, "recurse 3 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, ndx, ndx, rbs, cid);
+				movecnt += genallat_d(P, mvs, mvsndx, ndx, cid, subsct, ndx, rbs, newr, newm);
+			}
 		}
 	}
 	/* handle blank */
@@ -1933,24 +1949,42 @@ DBG(DBG_GEN, "recurse 1 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm
 				*mvsndx += 1; movecnt++; gmcnt++;
 			}
 			if (room) {
-				if (pos <= 0) {
-					newm.row = currow - dr; newm.col = curcol - dc;
-					newpos = pos;
-				} else {
-					newpos = pos + 1;
+				/* next move is next square. */
+				if (pos <=0 ) {
+					newm.row -= dr; newm.col -= dc;
 				}
 				cid = gc(gaddag[curid]);
-DBG(DBG_GEN, "recurse 2 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, newpos, ndx+1, newrbs, cid);
-				movecnt += genallat_d(P, mvs, mvsndx, newpos, cid, subsct, ndx + 1, newrbs, newr, newm);
+DBG(DBG_GEN, "recurse 2 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, pos, ndx+1, newrbs, cid);
+				movecnt += genallat_d(P, mvs, mvsndx, pos, cid, subsct, ndx + 1, newrbs, newr, newm);
+			}
+			/* after placing a tile, do the SEP thing */
+			if ((pos <= 0) && (bitset[nodeid] & SEPBIT)) {
+				newm = m;
+				currow = m.row + (ndx * m.dir);
+				curcol = m.col + (ndx * (1-m.dir));
+				if (isroom(currow, curcol, m.dir, 1)) {
+					newm.tiles[ndx] = '\0';
+					newr = r;
+					curid = gotol(SEP, nodeid);
+					cid = gc(gaddag[curid]);
+					subsct = sct;
+					subsct.ts = subsct.tbs = subsct.lms = subsct.play = 0;
+					subsct.wm=1;
+					revnstr(newm.tiles, ndx);
+		DBG(DBG_GEN, "recurse 3 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, ndx, ndx, rbs, cid);
+					movecnt += genallat_d(P, mvs, mvsndx, ndx, cid, subsct, ndx, rbs, newr, newm);
+				}
 			}
 		}
 	}
+#ifdef NOTDEF
 	/* and, lastly, do the SEP thing */
 	if ((pos <= 0) && (bitset[nodeid] & SEPBIT)) {
+		newm = m;
 		currow = m.row + (ndx * m.dir);
 		curcol = m.col + (ndx * (1-m.dir));
 		if (isroom(currow, curcol, m.dir, 1)) {
-// nonono..		newm.row = currow + dr; newm.col = curcol + dc;
+			newm.row += dr; newm.col += dc;
 			newm.tiles[ndx] = '\0';
 			newr = r;
 			curid = gotol(SEP, nodeid);
@@ -1963,6 +1997,7 @@ DBG(DBG_GEN, "recurse 3 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm
 			movecnt += genallat_d(P, mvs, mvsndx, ndx, cid, subsct, ndx, rbs, newr, newm);
 		}
 	}
+#endif
 DBG(DBG_GEN, "[%d] pop %d moves\n", ndx, movecnt);
 	return movecnt;
 }
@@ -2013,7 +2048,7 @@ DBG(DBG_GEN, "at %d,%d dir=%d", ar,ac, m->dir) {
 			return 0;
 		}
 		/* now call our recursive part. */
-DBG(DBG_GEN, "rcall pre pos=%d depth=%d rbs=%x\n", i, i, rbs);
+DBG(DBG_GEN, "rcall pre %d,%d/%d pos=%d depth=%d rbs=%x\n", P->m.row, P->m.col, P->m.dir, i, i, rbs);
 		mvcnt += genallat_d(P, mvs, mvsndx, i, nodeid, sct, i, rbs, P->r, P->m);
 		for (; i>=0;i--) m->tiles[i]='\0';
 	} else if (!nldn(b, m->row, m->col, m->dir, 1)) {
