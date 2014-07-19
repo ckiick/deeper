@@ -1829,13 +1829,6 @@ genallat_d(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthing
 	rack_t newr;
 	scthingy_t subsct;
 
-DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
-	printf(" - word=\"");
-	printlstr(w);
-	printf("\", rack=\"");
-	printlstr(r.tiles);
-	printf("\"\n");
-}
 	if (pos > 0) {
 		side = 1;
 		currow += ndx * m.dir;
@@ -1843,12 +1836,20 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 	} else {
 		side = -1;
 	}
+DBG(DBG_GEN, "[%d] at %d,%d/%d and %d,%d(%-d) node=%d", ndx, m.row, m.col, m.dir, currow,curcol,pos, nodeid) {
+	printf(" - word=\"");
+	printlstr(w);
+	printf("\", rack=\"");
+	printlstr(r.tiles);
+	printf("\"\n");
+}
 	/* if NOT first, don't redo anchors */
 	if ((side < 0) && (sct.played > 0) &&
 	    b->spaces[currow][curcol].b.f.anchor) {
 		return movecnt;
 	}
 
+	ASSERT(nodeid > 0);
 	/* take care of any played tiles. NOTE: only goes AFTER SEP TTR */
 	cid = nodeid;
 	snd = nldn(b, currow, curcol, m.dir, 1);
@@ -1857,11 +1858,12 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 		if (bitset[nodeid] & l2b(deblank(pl))) {
 			w[ndx++] = pl;
 			nodeid = gotol(deblank(pl), cid);
-			cid = gc(gaddag[nodeid]);
 			sct.ttl_ts += lval(pl);
 			if (snd) {
 				break;
 			}
+			cid = gc(gaddag[nodeid]);
+			ASSERT(cid > 0);
 			currow += dr; curcol += dc;
 			snd = nldn(b, currow, curcol, m.dir, 1);
 		} else {
@@ -1934,9 +1936,9 @@ DBG(DBG_GEN, "[%d] at %d,%d(%-d) node=%d", ndx, currow,curcol,pos, nodeid) {
 			}
 			*mvsndx += 1; movecnt++; gmcnt++;
 		}
-		if (room) {
-			rackem(&r, &newr, &newrbs, pl);
-			cid = gc(gaddag[curid]);
+		rackem(&r, &newr, &newrbs, pl);
+		cid = gc(gaddag[curid]);
+		if ((room) && (cid > 0)) {
 			/* next move is next square. */
 			if (pos <=0 ) {
 				newm.row -= dr; newm.col -= dc;
@@ -1947,15 +1949,11 @@ DBG(DBG_GEN, "recurse 1 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm
 			movecnt += genallat_d(P, mvs, mvsndx, pos, cid, subsct, ndx + 1, newrbs, newr, newm);
 		}
 		/* after placing a tile, do the SEP thing */
-		if ((pos <= 0) && (bitset[nodeid] & SEPBIT)) {
-//			currow = m.row + (ndx * m.dir);
-//			curcol = m.col + (ndx * (1-m.dir));	
-			currow += dr; curcol += dc;
-			if (isroom(currow, curcol, m.dir, 1)) {
+		if ((cid > 0) && (pos <= 0) && (bitset[cid] & SEPBIT)) {
+			if (isroom(currow + dr, curcol +dc, m.dir, 1)) {
 				newm.tiles[ndx] = '\0';
-				newr = r;
-				curid = gotol(SEP, nodeid);
-				cid = gc(gaddag[curid]);
+				cid = gotol(SEP, cid);
+				cid = gc(gaddag[cid]);
 				subsct = sct;
 				subsct.ts = subsct.tbs = subsct.lms = subsct.play = 0;
 				subsct.wm=1;
@@ -1967,6 +1965,7 @@ DBG(DBG_GEN, "recurse 1 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm
 	}
 	/* handle blank */
 	if (rbs & UBLBIT) {
+		newm = m;
 		curid = nodeid;
 		subsct = sct;
 		subsct.ts = 0;			/* blanks worth nothing */
@@ -1985,25 +1984,23 @@ DBG(DBG_GEN, "recurse 1 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm
 				}
 				*mvsndx += 1; movecnt++; gmcnt++;
 			}
-			if (room) {
+			cid = gc(gaddag[curid]);
+			if ((cid > 0) && (room)) {
 				/* next move is next square. */
 				if (pos <=0 ) {
 					newm.row -= dr; newm.col -= dc;
 				}
-				cid = gc(gaddag[curid]);
 DBG(DBG_GEN, "recurse 2 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, pos, ndx+1, newrbs, cid);
 				movecnt += genallat_d(P, mvs, mvsndx, pos, cid, subsct, ndx + 1, newrbs, newr, newm);
 			}
 			/* after placing a tile, do the SEP thing */
-			if ((pos <= 0) && (bitset[nodeid] & SEPBIT)) {
-				newm = m;
-				currow = m.row + (ndx * m.dir);
-				curcol = m.col + (ndx * (1-m.dir));
-				if (isroom(currow, curcol, m.dir, 1)) {
+			if ((cid > 0) && (pos <= 0) && (bitset[nodeid] & SEPBIT)) {
+				int seprow = m.row + (ndx * m.dir);
+				int sepcol = m.col + (ndx * (1-m.dir));
+				if (isroom(seprow, sepcol, m.dir, 1)) {
 					newm.tiles[ndx] = '\0';
-					newr = r;
-					curid = gotol(SEP, nodeid);
-					cid = gc(gaddag[curid]);
+					cid = gotol(SEP, cid);
+					cid = gc(gaddag[cid]);
 					subsct = sct;
 					subsct.ts = subsct.tbs = subsct.lms = subsct.play = 0;
 					subsct.wm=1;
@@ -2107,8 +2104,10 @@ DBG(DBG_GEN, "rcall pre %d,%d/%d pos=%d depth=%d rbs=%x\n", P->m.row, P->m.col, 
 			cr -= m->dir; cc-= (1-m->dir);
 		}
 		sct.ttl_tbs = sct.ttl_ts;
+		if (cid > 0) {
 DBG(DBG_GEN, "rcall post pos=%d depth=%d rbs=%x, mxy=%d,%d/%d cxy=%d,%d nid=%d\n", 0, i, rbs, m->row, m->col, m->dir, cr, cc, nodeid);
-		mvcnt += genallat_d(P, mvs, mvsndx, 0, cid, sct, i, rbs, P->r, P->m);
+			mvcnt += genallat_d(P, mvs, mvsndx, 0, cid, sct, i, rbs, P->r, P->m);
+		}
 		for (; i>=0;i--) m->tiles[i]='\0';
 	} else {
 		/* pass-thru */
