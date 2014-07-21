@@ -343,6 +343,7 @@ const uint8_t boni[BOARDX][BOARDY] = {
 };
 
 #define ALLPHABITS	0x3FFFFFF	/* 26 1 bits = play any letter */
+#define ALLPHABITSEP	(ALLPHABITS|SEPBIT)
 
 /* Move. one word played on board */
 /* do we need an end-of-game marker here? */

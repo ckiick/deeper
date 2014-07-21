@@ -807,6 +807,25 @@ nse(board_t *b, int r, int c, int dir, int side)
 	}
 }
 
+
+/* sublime: next door neighbor. Takes board, position, dir, side,
+ * Returns: <0 if off of board
+ *	     0 if empty space
+ *	     l(>0) if space contains a letter (sp.b.f.letter)
+ * clever bits: (x-7)/8 is 0 iff 0<=X<=14. To test the current space,
+ * set side to 0.
+ */
+int
+ndn(board_t *b, int r, int c, const int dir, const int side)
+{
+	r += dir*side; c += (1-dir)*side;
+
+	if (!(((c-7)/8) + ((r-7)/8))) {
+		return b->spaces[r][c].b.f.letter;
+	}
+	return -1;
+}
+
 /* dobridge: in the case where the cross move set falls into a "gap"
  * between played tiles, we have more work to do.  End is -1 for
  * "before" and +1 for "after".  The row,col are the end of the word.
@@ -1802,166 +1821,193 @@ addsct(scthingy_t *sct, letter_t l, int dir, space_t sp)
 	}
 }
 
-/* another re-write. reduce recursion. */
+/* genat data struct. */
+typedef struct _gat_d {
+	move_t m;		// move to add to mvs
+	rack_t r;		// current rack.
+	int side;		// which way
+	scthingy_t sct;		// scoring
+	int nodeid;		// for this square
+	bs_t rbs;		// matches r
+	int ndx;		// strlen move.tiles
+	int played;		// from rack.
+	int swr, swc;		// start word space
+	int ewr, ewc;		// end word space
+	int presep;		// special: 1 if anchored to left.
+} gatd_t;
+
+/*
+ * another re-write. reduce recursion with pregen.
+ * this is too hard: simplify. ASSERT and block stuff. Make it clear
+ * what is needed where.
+ * calling convention: the gat is const (input only). Things in gat
+ * are only ever passed DOWN, never up, via a new gat struct.
+ * the only thing that comes back up is the mvs array and the movecnt
+ * (return value).
+ * a special case to handle is the "empty" move, on first call.
+ * we can detect that in a number of ways: sw == ew, m.tiles is empty,
+ * played is 0, nodeid is 1...
+ */
 int
-genallat_d(position_t *P, move_t *mvs, int *mvsndx, int pos, int nodeid, scthingy_t sct, int ndx, bs_t rbs, rack_t r, move_t m)
+genallat_d(position_t *P, move_t *mvs, int *mvsndx, const gatd_t gat)
 {
 	board_t *b = &(P->b);
+	gatd_t newgat = gat;
 
 	int movecnt = 0;
+	letter_t pl;
+	int *cr; int *cc;
+
 	int curid;
 	int cid;
 	int sepid;
- 	letter_t *w = m.tiles;
-	int curcol = m.col;
-	int currow = m.row;
 	bs_t bs;
 	bs_t bbs;
-	bs_t newrbs;
-	register letter_t pl;
-	int side;
-	int dr = m.dir;
-	int dc = 1 - m.dir;
-	int snd;		// space next door.
-	int room;		// room next door.
-	int newpos;
-	move_t newm;
-	rack_t newr;
-	scthingy_t subsct;
 
-	if (pos > 0) {
-		side = 1;
-		currow += ndx * m.dir;
-		curcol += ndx * (1 - m.dir);
-	} else {
-		side = -1;
-	}
-DBG(DBG_GEN, "[%d] at %d,%d/%d and %d,%d(%-d) node=%d", ndx, m.row, m.col, m.dir, currow,curcol,pos, nodeid) {
+	/* sanity checks. add more later. */
+	ASSERT(gat.nodeid > 0);
+	ASSERT((ewc >= swc) && (ewr >= ewc));
+
+DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx, gat.swr, gat.swc, gat.dir, gat.ewr, gat.ewc, gat.side, gat.nodeid, gat.rbs, gat.played) {
 	printf(" - word=\"");
-	printlstr(w);
+	printlstr(gat.m.tiles);
 	printf("\", rack=\"");
-	printlstr(r.tiles);
+	printlstr(gat.r.tiles);
 	printf("\"\n");
 }
-	/* if NOT first, don't redo anchors */
-	if ((side < 0) && (sct.played > 0) &&
-	    b->spaces[currow][curcol].b.f.anchor) {
-		return movecnt;
+
+	/* handle the start condition. */
+	if (gat.side < 0) {
+		cr = &newgat.swr;
+		cc = &newgat.swc;
+	} else {
+		cr = &newgat.ewr;
+		cc = &newgat.ewc;
+	}
+	pl = ndn(b, *cr, *cc, gat.dir, gat.ndx == 0 ? 0 : gat.side);
+	if (pl < 0) return  movecnt;
+	if (gat.ndx > 0) {
+		*cc += (1 - gat.dir) * gat.side;;
+		*cr += (gat.dir) * gat.side;
 	}
 
-	ASSERT(nodeid > 0);
-	/* take care of any played tiles. NOTE: only goes AFTER SEP TTR */
-	cid = nodeid;
-	snd = nldn(b, currow, curcol, m.dir, 1);
-	while ((pl = b->spaces[currow][curcol].b.f.letter) != '\0') {
-		ASSERT(pos > 0);
-		if (bitset[nodeid] & l2b(deblank(pl))) {
-			w[ndx++] = pl;
-			nodeid = gotol(deblank(pl), cid);
-			sct.ttl_ts += lval(pl);
-			if (snd) {
-				break;
+	if (pl > 0) {
+		letter_t npl;
+		int change = 0;
+		while (pl > 0) {
+			if (!(bitset[newgat.nodeid] & l2b(pl))) {
+				return movecnt;
 			}
-			cid = gc(gaddag[nodeid]);
-			ASSERT(cid > 0);
-			currow += dr; curcol += dc;
-			snd = nldn(b, currow, curcol, m.dir, 1);
-		} else {
-			/* not in dict. return */
-			return movecnt;
+			newgat.nodeid = gotol(pl, newgat.nodeid);
+			if (pl != SEP) {
+				newgat.m.tiles[newgat.ndx++] = pl;
+				newgat.sct.ttl_ts += lval(pl);
+			} else {
+				revnstr(newgat.m.tiles, newgat.ndx);
+			}
+			/* got the letter, see if we are at end of word */
+			npl = ndn(b, *cr, *cc, gat.dir, newgat.side);
+			if ((npl < 0) && (side < 0)) {
+				npl = ndn(b, newgat.ewr, newgat.ewc, newgat.dir, 1);
+				if (npl <= 0) break;
+				pl = SEP;
+				cr = newgat.ewr; cc = newgat.ewc;
+				newgat.side = 1;
+			} else {
+				if (npl <= 0) break;
+				pl = npl;
+			}
+			newgat.nodeid = gc(gaddag[newgat.nodeid]);
+			*cc += (1 - newgat.dir) * newgat.side;
+			*cr += (newgat.dir) * newgat.side;
 		}
-	}
-	sct.ttl_tbs = sct.ttl_ts;
-	w[ndx] = '\0';
-
-	ASSERT((currow >=0)&&(curcol>=0)&&(currow<BOARDX)&&(curcol<BOARDY));
-	if (pl) {
-		if (sct.played && gf(gaddag[nodeid])) {
-			/* it's a real word! */
-			m.score = finalscore(sct);
+		newgat.sct.ttl_tbs = newgat.sct.ttl_ts;
+		ASSERT((pl > 0) && (newgat.nodeid > 0));
+		if (gf(gaddag[newgat.nodeid]) && (newgat.played > 0)) {
+			newgat.m.score = finalscore(newgat.sct);
 			VERB(VNOISY, "at_d:") {
-				printmove(&m, -1);
+				printmove(&(newgat.m), -1);
 			}
 			/* record play */
 			ASSERT(*mvsndx < MAXMVS);
-			mvs[*mvsndx] = m;
+			mvs[*mvsndx] = newgat.m;
 			*mvsndx += 1; movecnt++; gmcnt++;
 		}
-		if (isroom(currow, curcol, m.dir, 1)) {
-			currow += dr; curcol += dc;
-			pl = b->spaces[currow][curcol].b.f.letter;
-			nodeid = cid;
-		} else {
+		pl = npl;
+		newgat.nodeid = gc(gaddag[newgat.nodeid]);
+		*cc += (1 - newgat.dir) * newgat.side;;
+		*cr += (newgat.dir) * newgat.side;
+		if ((pl < 0) || (newgat.nodeid <= 0)) {
+			/* no more room, no more gaddag */
 			return movecnt;
 		}
 	}
-	ASSERT(pl == '\0');		// has to be a space
-	if ((pos <= 0) && (sct.played > 0) && b->spaces[currow][curcol].b.f.anchor) {
-		/* prune. */
+	ASSERT((pl == 0) && (newgat.nodeid > 0));
+	/* prune */
+	if ((gat.side < 0) && (gat.played > 0) &&
+	    b->spaces[*cr][*cc].b.f.anchor) {
 		return movecnt;
 	}
-	/* begin iterations. */
+	/* iterate over playable tiles */
 	curid = nodeid;
 	bbs = bitset[curid];
+	sct = newgat.sct;
 	sct.play = 1;
-	sct.wm =  b->spaces[currow][curcol].b.f.wm;
-	sct.tbs =  b->spaces[currow][curcol].b.f.lm;	/* setup for below */
-	sct.lms = b->spaces[currow][curcol].b.f.mls[m.dir];
-	if (b->spaces[currow][curcol].b.f.anchor & (1+m.dir)) {
-		bbs &= b->spaces[currow][curcol].mbs[m.dir];
+	sct.wm = b->spaces[*cr][*cc].b.f.wm;
+	sct.tbs = b->spaces[*cr][*cc].b.f.lm;	/* setup for below */
+	sct.lms = b->spaces[*cr][*cc].b.f.mls[newgat.m.dir];
+	if (b->spaces[*cr][*cc].b.f.anchor & (1+newgat.m.dir)) {
+		bbs &= b->spaces[*cr][*cc].mbs[newgat.m.dir];
 		sct.play += 1;
 	}
-	bs = rbs & bbs;
-//	newm.tiles[ndx+1] = '\0';
-	snd = nldn(b, currow, curcol, m.dir, side);
-	room = isroom(currow, curcol, m.dir, side);
+	if (newgat.side < 0) {
+		if (newgat.played > 0) {
+			bs |= SEPBIT;
+		} else if (newgat.presep) {
+			/* special case: pregen moved from anchor right */
+			bs = SEPBIT;
+			newgat.presep = 0;
+		}
+	}
+	bs &= bbs;
+	newgat.m.tiles[ndx+1] = '\0';
+	npl = ndn(b, *cr, *cc, newgat.dir, newgat.side);
 	while ((pl = nextl(&bs, &curid)) != '\0') {
 		/* could be either direction. */
-		newm = m;
-		newm.tiles[ndx] = pl;
-		subsct = sct;
-		subsct.ts = lval(pl);
-		subsct.tbs *= subsct.ts;	/* saved multiplier */
-		updatescore(&subsct);
-		if (gf(gaddag[curid]) && snd) {
-			newm.score = finalscore(subsct);
+		if (pl == SEP) {
+			cr = newgat.ewr; cc = newgat.ewc;
+			newgat.side = 1;
+			npl = ndn(b, *cr, *cc, newgat.dir, newgat.side);
+			continue;
+		}
+		newgat.played = gat.played+1;
+		newgat.m.tiles[ndx] = pl;
+		newgat.sct = sct;
+		newgat.sct.ts = lval(pl);
+		newgat.sct.tbs *= newgat.sct.ts;/* saved multiplier */
+		updatescore(&(newgat.sct));
+		if (gf(gaddag[curid]) && (npl <= 0)) {
+			newgat.m.score = finalscore(newgat.sct);
 			VERB(VNOISY, "at_d: ") {
-				printmove(&newm, -pos);
+				printmove(&(newgat.m), -1);
 			}
-			/* another move found */
 			ASSERT(*mvsndx < MAXMVS);
-			mvs[*mvsndx] = newm;
-			if (pos <= 0) {
+			mvs[*mvsndx] = newgat.m;
+			if (side < 0) {
 				revstr(mvs[*mvsndx].tiles);
 			}
 			*mvsndx += 1; movecnt++; gmcnt++;
 		}
-		rackem(&r, &newr, &newrbs, pl);
+		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), pl);
 		cid = gc(gaddag[curid]);
-		if ((room) && (cid > 0)) {
-			/* next move is next square. */
-			if (pos <=0 ) {
-				newm.row -= dr; newm.col -= dc;
-			}
-			/* finally, recurse */
-DBG(DBG_GEN, "recurse 1 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, pos, ndx+1, newrbs, cid);
-			/* same board, new rack, fixed move, ndx incremented  */
-			movecnt += genallat_d(P, mvs, mvsndx, pos, cid, subsct, ndx + 1, newrbs, newr, newm);
-		}
-		/* after placing a tile, do the SEP thing */
-		if ((cid > 0) && (pos <= 0) && (bitset[cid] & SEPBIT)) {
-			if (isroom(currow + dr, curcol +dc, m.dir, 1)) {
-				newm.tiles[ndx] = '\0';
-				cid = gotol(SEP, cid);
-				cid = gc(gaddag[cid]);
-				subsct = sct;
-				subsct.ts = subsct.tbs = subsct.lms = subsct.play = 0;
-				subsct.wm=1;
-				revnstr(newm.tiles, ndx);
-	DBG(DBG_GEN, "recurse 3 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, ndx, ndx, rbs, cid);
-				movecnt += genallat_d(P, mvs, mvsndx, ndx, cid, subsct, ndx, rbs, newr, newm);
-			}
-		}
+
+		/* notright.*/
+//		*cc += (1 - newgat.dir) * newgat.side;;
+//		*cr += (newgat.dir) * newgat.side;
+
+
+DBG(DBG_GEN, "[%d] recuse A at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n", gat.ndx, gat.swr, gat.swc, gat.dir, gat.ewr, gat.ewc, gat.side, gat.nodeid, gat.rbs, gat.played);
+		movecnt += genallat_d(P, mvs, mvsndx, newgat);
 	}
 	/* handle blank */
 	if (rbs & UBLBIT) {
@@ -3276,6 +3322,105 @@ vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		bs = finals(nid);
 vprintf(VNOISY, "finals for node %d are %x\n", nid, bs);
 		ASSERT(bs == 1);
+	}
+	{
+		/* ndn = next door neighbor */
+		board_t tb; int r; int c; int d; int s;
+		int rv;
+		tb = emptyboard;
+		tb.spaces[7][7].b.f.letter = c2l('A');
+
+		r = 7; c = 7; d = M_HORIZ; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 7; d = M_HORIZ; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 7; d = M_VERT; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 7; d = M_VERT; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+
+		r = 0; c = 0; d = M_HORIZ; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 0; c = 0; d = M_VERT; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 0; c = 0; d = M_VERT; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv < 0);
+		r = 0; c = 0; d = M_HORIZ; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv < 0);
+
+		r = 14; c = 14; d = M_HORIZ; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv < 0);
+		r = 14; c = 14; d = M_VERT; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv < 0);
+		r = 14; c = 14; d = M_VERT; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 14; c = 14; d = M_HORIZ; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+
+		r = 6; c = 7; d = M_HORIZ; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+//:printf("got %d expected %d from %d,%d/%d/%d\n", rv, c2l('A'), r,c,d,s);
+		r = 6; c = 7; d = M_VERT; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == c2l('A'));
+		r = 6; c = 7; d = M_VERT; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 6; c = 7; d = M_HORIZ; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+
+		r = 8; c = 7; d = M_HORIZ; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 8; c = 7; d = M_VERT; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 8; c = 7; d = M_VERT; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == c2l('A'));
+		r = 8; c = 7; d = M_HORIZ; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+
+		r = 7; c = 6; d = M_HORIZ; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == c2l('A'));
+		r = 7; c = 6; d = M_VERT; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 6; d = M_VERT; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 6; d = M_HORIZ; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+
+		r = 7; c = 8; d = M_HORIZ; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 8; d = M_VERT; s = 1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 8; d = M_VERT; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == 0);
+		r = 7; c = 8; d = M_HORIZ; s = -1;
+		rv = ndn(&tb, r, c, d, s);
+		ASSERT(rv == c2l('A'));
 	}
 	{
 		/* nldn */
