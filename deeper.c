@@ -1861,6 +1861,7 @@ genallat_d(position_t *P, move_t *mvs, int *mvsndx, const gatd_t gat)
 	scthingy_t sct;
 
 	int curid;
+	int saveid;
 	int cid;
 	int sepid;
 	bs_t bs;
@@ -1924,7 +1925,7 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 			*cr += (newgat.m.dir) * newgat.side;
 		}
 		newgat.sct.ttl_tbs = newgat.sct.ttl_ts;
-		ASSERT((pl > 0) && (newgat.nodeid > 0));
+		ASSERT((((pl > 0) && (newgat.nodeid > 0))));
 		if (gf(gaddag[newgat.nodeid]) && (newgat.played > 0)) {
 			newgat.m.score = finalscore(newgat.sct);
 			VERB(VNOISY, "at_d:") {
@@ -1933,6 +1934,9 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 			/* record play */
 			ASSERT(*mvsndx < MAXMVS);
 			mvs[*mvsndx] = newgat.m;
+			if (newgat.side < 0) {
+				revstr(mvs[*mvsndx].tiles);
+			}
 			*mvsndx += 1; movecnt++; gmcnt++;
 		}
 		pl = npl;
@@ -1951,7 +1955,8 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		return movecnt;
 	}
 	/* iterate over playable tiles */
-	curid = gat.nodeid;
+	saveid = newgat.nodeid;
+	curid = newgat.nodeid;
 	bbs = bitset[curid];
 	sct = newgat.sct;
 	sct.play = 1;
@@ -2000,6 +2005,7 @@ onceagain:
 		updatescore(&(newgat.sct));
 		if (gf(gaddag[curid]) && (npl <= 0)) {
 			newgat.m.score = finalscore(newgat.sct);
+			newgat.m.row = newgat.swr; newgat.m.col = newgat.swc;
 			VERB(VNOISY, "at_d: ") {
 				printmove(&(newgat.m), newgat.side < 0 ? 0 : -1);
 			}
@@ -2022,7 +2028,7 @@ DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n"
 	}
 	/* handle blank */
 	if (gat.rbs & UBLBIT) {
-		curid = gat.nodeid;
+		curid = saveid;
 		bs = gat.rbs;
 		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), UBLANK);
 		goto onceagain;
