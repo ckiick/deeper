@@ -1866,6 +1866,7 @@ genallat_d(position_t *P, move_t *mvs, int *mvsndx, const gatd_t gat)
 	int sepid;
 	bs_t bs;
 	bs_t bbs;
+	letter_t bl = 0;
 
 	/* sanity checks. add more later. */
 	ASSERT(gat.nodeid > 0);
@@ -1981,10 +1982,10 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 			newgat.presep = 0;
 		}
 	}
-	bs &= bbs;
 	newgat.m.tiles[newgat.ndx+1] = '\0';
 	npl = ndn(b, *cr, *cc, newgat.m.dir, newgat.side);
 onceagain:
+	bs &= bbs;
 	while ((pl = nextl(&bs, &curid)) != '\0') {
 		/* could be either direction. */
 		if (pl == SEP) {
@@ -1998,7 +1999,7 @@ onceagain:
 			continue;
 		}
 		newgat.played = gat.played+1;
-		newgat.m.tiles[newgat.ndx] = pl;
+		newgat.m.tiles[newgat.ndx] = pl | bl;
 		newgat.sct = sct;
 		newgat.sct.ts = lval(pl);
 		newgat.sct.tbs *= newgat.sct.ts;/* saved multiplier */
@@ -2016,7 +2017,7 @@ onceagain:
 			}
 			*mvsndx += 1; movecnt++; gmcnt++;
 		}
-		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), pl);
+		if (!bl) rackem(&(gat.r), &(newgat.r), &(newgat.rbs), pl);
 		newgat.nodeid = gc(gaddag[curid]);
 		if (newgat.nodeid > 0) {
 			newgat.ndx++;
@@ -2027,10 +2028,11 @@ DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n"
 		}
 	}
 	/* handle blank */
-	if (gat.rbs & UBLBIT) {
+	if (newgat.rbs & UBLBIT) {
 		curid = saveid;
-		bs = gat.rbs;
 		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), UBLANK);
+		bs = ALLPHABITSEP;
+		bl = BB;
 		goto onceagain;
 	}
 DBG(DBG_GEN, "[%d] pop %d moves\n", newgat.ndx, movecnt);
@@ -2084,8 +2086,8 @@ DBG(DBG_GEN, "at %d,%d dir=%d", ar,ac, m->dir) {
 		gogat.side = -1;
 		while (pl > 0) {
 			/* in this case, goto the end. */
-			pl = ndn(b, gogat.ewr, gogat.ewc, gogat.m.dir, 1);
 			gogat.ewr += gogat.m.dir; gogat.ewc += (1-gogat.m.dir);
+			pl = ndn(b, gogat.ewr, gogat.ewc, gogat.m.dir, 1);
 		}
 		gogat.swr = gogat.ewr; gogat.swc = gogat.ewc;
 	}
