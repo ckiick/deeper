@@ -223,7 +223,7 @@ casec2lstr(char *cstr, char *lstr)
 }
 
 inline int
-l2cstr(char *lstr, char *cstr)
+l2cstr(const char *lstr, char *cstr)
 {
 	int inv = 0;
 	int i = 0;
@@ -439,7 +439,7 @@ printlrstr(letter_t *lstr) {
 }
 
 void
-printlstr(letter_t *lstr) {
+printlstr(const letter_t *lstr) {
 	char cstr[20] = "";
 	int rv;
 
@@ -482,9 +482,10 @@ DBG(DBG_RACK, "bag now at %d, filled %d tiles to make ", *bagpos, cnt) {
  * ORDER IS IMPORTANT: assume oldr is sorted, and keep newr the same way.
  */
 inline void
-rackem(rack_t *oldr, rack_t *newr, bs_t *rbs, letter_t L)
+rackem(rack_t const *oldr, rack_t *newr, bs_t *rbs, letter_t L)
 {
-	letter_t *op = oldr->tiles, *np = newr->tiles;
+	letter_t const *op = oldr->tiles;
+	letter_t *np = newr->tiles;
 	*rbs = 0;
 
 	while (*op != '\0') {
@@ -1855,8 +1856,9 @@ genallat_d(position_t *P, move_t *mvs, int *mvsndx, const gatd_t gat)
 	gatd_t newgat = gat;
 
 	int movecnt = 0;
-	letter_t pl;
+	letter_t pl, npl;
 	int *cr; int *cc;
+	scthingy_t sct;
 
 	int curid;
 	int cid;
@@ -1866,9 +1868,9 @@ genallat_d(position_t *P, move_t *mvs, int *mvsndx, const gatd_t gat)
 
 	/* sanity checks. add more later. */
 	ASSERT(gat.nodeid > 0);
-	ASSERT((ewc >= swc) && (ewr >= ewc));
+	ASSERT((gat.ewc >= gat.swc) && (gat.ewr >= gat.ewr));
 
-DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx, gat.swr, gat.swc, gat.dir, gat.ewr, gat.ewc, gat.side, gat.nodeid, gat.rbs, gat.played) {
+DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx, gat.swr, gat.swc, gat.m.dir, gat.ewr, gat.ewc, gat.side, gat.nodeid, gat.rbs, gat.played) {
 	printf(" - word=\"");
 	printlstr(gat.m.tiles);
 	printf("\", rack=\"");
@@ -1884,11 +1886,11 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		cr = &newgat.ewr;
 		cc = &newgat.ewc;
 	}
-	pl = ndn(b, *cr, *cc, gat.dir, gat.ndx == 0 ? 0 : gat.side);
+	pl = ndn(b, *cr, *cc, gat.m.dir, gat.ndx == 0 ? 0 : gat.side);
 	if (pl < 0) return  movecnt;
 	if (gat.ndx > 0) {
-		*cc += (1 - gat.dir) * gat.side;;
-		*cr += (gat.dir) * gat.side;
+		*cc += (1 - gat.m.dir) * gat.side;;
+		*cr += (gat.m.dir) * gat.side;
 	}
 
 	if (pl > 0) {
@@ -1906,20 +1908,20 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 				revnstr(newgat.m.tiles, newgat.ndx);
 			}
 			/* got the letter, see if we are at end of word */
-			npl = ndn(b, *cr, *cc, gat.dir, newgat.side);
-			if ((npl < 0) && (side < 0)) {
-				npl = ndn(b, newgat.ewr, newgat.ewc, newgat.dir, 1);
+			npl = ndn(b, *cr, *cc, gat.m.dir, newgat.side);
+			if ((npl < 0) && (newgat.side < 0)) {
+				npl = ndn(b, newgat.ewr, newgat.ewc, newgat.m.dir, 1);
 				if (npl <= 0) break;
 				pl = SEP;
-				cr = newgat.ewr; cc = newgat.ewc;
+				cr = &newgat.ewr; cc = &newgat.ewc;
 				newgat.side = 1;
 			} else {
 				if (npl <= 0) break;
 				pl = npl;
 			}
 			newgat.nodeid = gc(gaddag[newgat.nodeid]);
-			*cc += (1 - newgat.dir) * newgat.side;
-			*cr += (newgat.dir) * newgat.side;
+			*cc += (1 - newgat.m.dir) * newgat.side;
+			*cr += (newgat.m.dir) * newgat.side;
 		}
 		newgat.sct.ttl_tbs = newgat.sct.ttl_ts;
 		ASSERT((pl > 0) && (newgat.nodeid > 0));
@@ -1935,8 +1937,8 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		}
 		pl = npl;
 		newgat.nodeid = gc(gaddag[newgat.nodeid]);
-		*cc += (1 - newgat.dir) * newgat.side;;
-		*cr += (newgat.dir) * newgat.side;
+		*cc += (1 - newgat.m.dir) * newgat.side;;
+		*cr += (newgat.m.dir) * newgat.side;
 		if ((pl < 0) || (newgat.nodeid <= 0)) {
 			/* no more room, no more gaddag */
 			return movecnt;
@@ -1949,7 +1951,7 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		return movecnt;
 	}
 	/* iterate over playable tiles */
-	curid = nodeid;
+	curid = gat.nodeid;
 	bbs = bitset[curid];
 	sct = newgat.sct;
 	sct.play = 1;
@@ -1960,6 +1962,11 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		bbs &= b->spaces[*cr][*cc].mbs[newgat.m.dir];
 		sct.play += 1;
 	}
+	/*
+	*cc += (1 - newgat.m.dir) * newgat.side;;
+	*cr += (newgat.m.dir) * newgat.side;
+	*/
+	bs = gat.rbs;
 	if (newgat.side < 0) {
 		if (newgat.played > 0) {
 			bs |= SEPBIT;
@@ -1970,18 +1977,23 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		}
 	}
 	bs &= bbs;
-	newgat.m.tiles[ndx+1] = '\0';
-	npl = ndn(b, *cr, *cc, newgat.dir, newgat.side);
+	newgat.m.tiles[newgat.ndx+1] = '\0';
+	npl = ndn(b, *cr, *cc, newgat.m.dir, newgat.side);
+onceagain:
 	while ((pl = nextl(&bs, &curid)) != '\0') {
 		/* could be either direction. */
 		if (pl == SEP) {
-			cr = newgat.ewr; cc = newgat.ewc;
+			*cc -= (1 - newgat.m.dir) * newgat.side;;
+			*cr -= (newgat.m.dir) * newgat.side;
+			cr = &newgat.ewr; cc = &newgat.ewc;
 			newgat.side = 1;
-			npl = ndn(b, *cr, *cc, newgat.dir, newgat.side);
+			*cc += (1 - newgat.m.dir) * newgat.side;;
+			*cr += (newgat.m.dir) * newgat.side;
+			npl = ndn(b, *cr, *cc, newgat.m.dir, newgat.side);
 			continue;
 		}
 		newgat.played = gat.played+1;
-		newgat.m.tiles[ndx] = pl;
+		newgat.m.tiles[newgat.ndx] = pl;
 		newgat.sct = sct;
 		newgat.sct.ts = lval(pl);
 		newgat.sct.tbs *= newgat.sct.ts;/* saved multiplier */
@@ -1989,96 +2001,33 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		if (gf(gaddag[curid]) && (npl <= 0)) {
 			newgat.m.score = finalscore(newgat.sct);
 			VERB(VNOISY, "at_d: ") {
-				printmove(&(newgat.m), -1);
+				printmove(&(newgat.m), newgat.side < 0 ? 0 : -1);
 			}
 			ASSERT(*mvsndx < MAXMVS);
 			mvs[*mvsndx] = newgat.m;
-			if (side < 0) {
+			if (newgat.side < 0) {
 				revstr(mvs[*mvsndx].tiles);
 			}
 			*mvsndx += 1; movecnt++; gmcnt++;
 		}
 		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), pl);
-		cid = gc(gaddag[curid]);
+		newgat.nodeid = gc(gaddag[curid]);
+		if (newgat.nodeid > 0) {
+			newgat.ndx++;
 
-		/* notright.*/
-//		*cc += (1 - newgat.dir) * newgat.side;;
-//		*cr += (newgat.dir) * newgat.side;
-
-
-DBG(DBG_GEN, "[%d] recuse A at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n", gat.ndx, gat.swr, gat.swc, gat.dir, gat.ewr, gat.ewc, gat.side, gat.nodeid, gat.rbs, gat.played);
-		movecnt += genallat_d(P, mvs, mvsndx, newgat);
+DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n", gat.ndx, gat.swr, gat.swc, gat.m.dir, gat.ewr, gat.ewc, gat.side, gat.nodeid, gat.rbs, gat.played);
+			movecnt += genallat_d(P, mvs, mvsndx, newgat);
+			newgat.ndx--;
+		}
 	}
 	/* handle blank */
-	if (rbs & UBLBIT) {
-		newm = m;
-		curid = nodeid;
-		subsct = sct;
-		subsct.ts = 0;			/* blanks worth nothing */
-		subsct.tbs = 0;
-		updatescore(&subsct);
-		rackem(&r, &newr, &newrbs, UBLANK);
-		while ((pl = nextl(&bbs, &curid)) != '\0') {
-			newm.tiles[ndx] = pl | BB;
-			if (gf(gaddag[curid]) && snd) {
-				newm.score = finalscore(subsct);
-				/* another move found */
-				ASSERT(*mvsndx < MAXMVS);
-				mvs[*mvsndx] = newm;
-				if (pos <= 0) {
-					revstr(mvs[*mvsndx].tiles);
-				}
-				*mvsndx += 1; movecnt++; gmcnt++;
-			}
-			cid = gc(gaddag[curid]);
-			if ((cid > 0) && (room)) {
-				/* next move is next square. */
-				if (pos <=0 ) {
-					newm.row -= dr; newm.col -= dc;
-				}
-DBG(DBG_GEN, "recurse 2 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, pos, ndx+1, newrbs, cid);
-				movecnt += genallat_d(P, mvs, mvsndx, pos, cid, subsct, ndx + 1, newrbs, newr, newm);
-			}
-			/* after placing a tile, do the SEP thing */
-			if ((cid > 0) && (pos <= 0) && (bitset[nodeid] & SEPBIT)) {
-				int seprow = m.row + (ndx * m.dir);
-				int sepcol = m.col + (ndx * (1-m.dir));
-				if (isroom(seprow, sepcol, m.dir, 1)) {
-					newm.tiles[ndx] = '\0';
-					cid = gotol(SEP, cid);
-					cid = gc(gaddag[cid]);
-					subsct = sct;
-					subsct.ts = subsct.tbs = subsct.lms = subsct.play = 0;
-					subsct.wm=1;
-					revnstr(newm.tiles, ndx);
-		DBG(DBG_GEN, "recurse 3 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, ndx, ndx, rbs, cid);
-					movecnt += genallat_d(P, mvs, mvsndx, ndx, cid, subsct, ndx, rbs, newr, newm);
-				}
-			}
-		}
+	if (gat.rbs & UBLBIT) {
+		curid = gat.nodeid;
+		bs = gat.rbs;
+		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), UBLANK);
+		goto onceagain;
 	}
-#ifdef NOTDEF
-	/* and, lastly, do the SEP thing */
-	if ((pos <= 0) && (bitset[nodeid] & SEPBIT)) {
-		newm = m;
-		currow = m.row + (ndx * m.dir);
-		curcol = m.col + (ndx * (1-m.dir));
-		if (isroom(currow, curcol, m.dir, 1)) {
-			newm.row += dr; newm.col += dc;
-			newm.tiles[ndx] = '\0';
-			newr = r;
-			curid = gotol(SEP, nodeid);
-			cid = gc(gaddag[curid]);
-			subsct = sct;
-			subsct.ts = subsct.tbs = subsct.lms = subsct.play = 0;
-			subsct.wm=1;
-			revnstr(newm.tiles, ndx);
-DBG(DBG_GEN, "recurse 3 %d,%d/%d pos=%d, ndx=%d rbs=%x, id=%d\n", newm.row, newm.col, newm.dir, ndx, ndx, rbs, cid);
-			movecnt += genallat_d(P, mvs, mvsndx, ndx, cid, subsct, ndx, rbs, newr, newm);
-		}
-	}
-#endif
-DBG(DBG_GEN, "[%d] pop %d moves\n", ndx, movecnt);
+DBG(DBG_GEN, "[%d] pop %d moves\n", newgat.ndx, movecnt);
 	return movecnt;
 }
 
@@ -2088,9 +2037,9 @@ pregen_d(position_t *P, move_t *mvs, int *mvsndx)
 	board_t *b = &(P->b);
 	move_t *m = &(P->m);
 	rack_t *r = &(P->r);
+	gatd_t gogat;
 
 	letter_t pl;
-	scthingy_t sct = newsct;
 	int mvcnt = 0;
 	int ar = m->row;
 	int ac = m->col;
@@ -2104,63 +2053,37 @@ DBG(DBG_GEN, "at %d,%d dir=%d", ar,ac, m->dir) {
 	printf("\"\n");
 }
 
-	rbs = lstr2bs(P->r.tiles);
+	/* simplify a little: weigh anchor but let at_d roll it home. */
+	gogat.rbs = lstr2bs(P->r.tiles);
+	gogat.m = *m;
+	gogat.r = *r;
+	gogat.sct = newsct;
+	gogat.ndx = 0;
+	gogat.nodeid = 1;
+	gogat.played = 0;		// from rack.
+	gogat.swr = P->m.row;
+	gogat.swc = P->m.col;
+	gogat.ewr = P->m.row;
+	gogat.ewc = P->m.col;
+	gogat.presep = 0;
+	gogat.side = -1;
 	/* we are first, so lets look around. */
-	if (!nldn(b, m->row, m->col, m->dir, -1)) {
-		int i = 0;
-		/* played tile on left. use it as prefix. */
-		while (!nldn(b, m->row, m->col, m->dir, -1)) {
-			m->row -= m->dir; m->col -= (1-m->dir);
-			pl = b->spaces[m->row][m->col].b.f.letter;
-			m->tiles[i] = pl; i++;
-			nodeid = gotol(deblank(pl), nodeid);
-			nodeid = gc(gaddag[nodeid]);
-			sct.ttl_ts += lval(pl);
+	pl = ndn(b, gogat.swr, gogat.swc, gogat.m.dir, -1);
+	if (pl > 0) {
+		/* move over 1. */
+		gogat.swr -= gogat.m.dir; gogat.swc -= (1-gogat.m.dir);
+		gogat.ewr = gogat.swr; gogat.ewc = gogat.swc;
+		gogat.presep = 1;
+	} else if (pl = ndn(b, gogat.ewr, gogat.ewc, gogat.m.dir, 1) > 0) {
+		gogat.side = -1;
+		while (pl > 0) {
+			/* in this case, goto the end. */
+			pl = ndn(b, gogat.ewr, gogat.ewc, gogat.m.dir, 1);
+			gogat.ewr += gogat.m.dir; gogat.ewc += (1-gogat.m.dir);
 		}
-		sct.ttl_tbs = sct.ttl_ts;
-		/* in this case, we have to change direction. */
-		if (bitset[nodeid] & SEPBIT) {
-			nodeid = gotol(SEP, nodeid);
-			nodeid = gc(gaddag[nodeid]);
-		} else {
-			/* no valid move here. */
-			for (; i>=0;i--) m->tiles[i]='\0';
-			return 0;
-		}
-		/* now call our recursive part. */
-DBG(DBG_GEN, "rcall pre %d,%d/%d pos=%d depth=%d rbs=%x\n", P->m.row, P->m.col, P->m.dir, i, i, rbs);
-		mvcnt += genallat_d(P, mvs, mvsndx, i, nodeid, sct, i, rbs, P->r, P->m);
-		for (; i>=0;i--) m->tiles[i]='\0';
-	} else if (!nldn(b, m->row, m->col, m->dir, 1)) {
-		/* look on the other side. */
-		int i = 0, j= 0; int cr = m->row; int cc = m->col;
-		cid = nodeid;
-		/* find the 'end' of the played tiles */
-		while (!nldn(b, cr, cc, m->dir, 1)) {
-			cr += m->dir; cc+= (1-m->dir);
-			j++;
-		}
-		/* now traverse gaddag back to original spot.*/
-		for (; j > 0; j--) {
-			pl = b->spaces[cr][cc].b.f.letter;
-			m->tiles[i] = pl; i++;
-			nodeid = gotol(deblank(pl), cid);
-			cid = gc(gaddag[nodeid]);
-			sct.ttl_ts += lval(pl);
-			cr -= m->dir; cc-= (1-m->dir);
-		}
-		sct.ttl_tbs = sct.ttl_ts;
-		if (cid > 0) {
-DBG(DBG_GEN, "rcall post pos=%d depth=%d rbs=%x, mxy=%d,%d/%d cxy=%d,%d nid=%d\n", 0, i, rbs, m->row, m->col, m->dir, cr, cc, nodeid);
-			mvcnt += genallat_d(P, mvs, mvsndx, 0, cid, sct, i, rbs, P->r, P->m);
-		}
-		for (; i>=0;i--) m->tiles[i]='\0';
-	} else {
-		/* pass-thru */
-DBG(DBG_GEN, "rcall none pos=%d depth=%d rbs=%x\n", 0, 0, rbs);
-		mvcnt += genallat_d(P, mvs, mvsndx, 0, nodeid, sct, 0, rbs, P->r, P->m);
+		gogat.swr = gogat.ewr; gogat.swc = gogat.ewc;
 	}
-	return mvcnt;
+	return genallat_d(P, mvs, mvsndx, gogat);
 }
 
 
