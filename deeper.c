@@ -1968,19 +1968,15 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		bbs &= b->spaces[*cr][*cc].mbs[newgat.m.dir];
 		sct.play += 1;
 	}
-	/*
-	*cc += (1 - newgat.m.dir) * newgat.side;;
-	*cr += (newgat.m.dir) * newgat.side;
-	*/
 	bs = gat.rbs;
-	if (newgat.side < 0) {
-		if (newgat.played > 0) {
-			bs |= SEPBIT;
-		} else if (newgat.presep) {
-			/* special case: pregen moved from anchor right */
-			bs = SEPBIT;
-			newgat.presep = 0;
-		}
+	/* special case. If pregen moved us one space left, then when we
+	 * hit the end of the played tiles, the only thing we can do
+	 * is reverse direction, because this must be another anchor.
+	 */
+	if ((newgat.side < 0) && (newgat.played <= 0) && (newgat.presep)) {
+		ASSERT(b->spaces[*cr][*cc].b.f.anchor);
+		newgat.presep = 0;
+		goto seponly;
 	}
 	newgat.m.tiles[newgat.ndx+1] = '\0';
 	npl = ndn(b, *cr, *cc, newgat.m.dir, newgat.side);
@@ -1988,16 +1984,6 @@ onceagain:
 	bs &= bbs;
 	while ((pl = nextl(&bs, &curid)) != '\0') {
 		/* could be either direction. */
-		if (pl == SEP) {
-			*cc -= (1 - newgat.m.dir) * newgat.side;;
-			*cr -= (newgat.m.dir) * newgat.side;
-			cr = &newgat.ewr; cc = &newgat.ewc;
-			newgat.side = 1;
-			*cc += (1 - newgat.m.dir) * newgat.side;;
-			*cr += (newgat.m.dir) * newgat.side;
-			npl = ndn(b, *cr, *cc, newgat.m.dir, newgat.side);
-			continue;
-		}
 		newgat.played = gat.played+1;
 		newgat.m.tiles[newgat.ndx] = pl | bl;
 		newgat.sct = sct;
@@ -2022,7 +2008,7 @@ onceagain:
 		if (newgat.nodeid > 0) {
 			newgat.ndx++;
 
-DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n", gat.ndx, gat.swr, gat.swc, gat.m.dir, gat.ewr, gat.ewc, gat.side, gat.nodeid, gat.rbs, gat.played);
+DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n", newgat.ndx, newgat.swr, newgat.swc, newgat.m.dir, newgat.ewr, newgat.ewc, newgat.side, newgat.nodeid, newgat.rbs, newgat.played);
 			movecnt += genallat_d(P, mvs, mvsndx, newgat);
 			newgat.ndx--;
 		}
@@ -2031,10 +2017,33 @@ DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n"
 	if (newgat.rbs & UBLBIT) {
 		curid = saveid;
 		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), UBLANK);
-		bs = ALLPHABITSEP;
+		bs = ALLPHABITS;
 		bl = BB;
 		goto onceagain;
 	}
+seponly:
+	/* and do SEP if needed */
+	if ((newgat.side < 0) && (bbs & SEPBIT)) {
+		npl = ndn(b, newgat.ewr, newgat.ewc, newgat.m.dir, 1);
+		if (npl >= 0) {
+			newgat.m.tiles[newgat.ndx] = 0;
+			newgat.played--;
+			newgat.r = gat.r;
+			newgat.swr += newgat.m.dir;
+			newgat.swc += (1 - newgat.m.dir);
+			newgat.side = 1;
+			newgat.ewr += newgat.m.dir;
+			newgat.ewc += (1 - newgat.m.dir);
+			curid = gotol(SEP, saveid);
+			newgat.nodeid = gc(gaddag[curid]);
+			revstr(newgat.m.tiles);
+			ASSERT(newgat.nodeid > 0);
+
+DBG(DBG_GEN, "[%d] recurse B at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n", newgat.ndx, newgat.swr, newgat.swc, newgat.m.dir, newgat.ewr, newgat.ewc, newgat.side, newgat.nodeid, newgat.rbs, newgat.played);
+			movecnt += genallat_d(P, mvs, mvsndx, newgat);
+		}
+	}
+
 DBG(DBG_GEN, "[%d] pop %d moves\n", newgat.ndx, movecnt);
 	return movecnt;
 }
