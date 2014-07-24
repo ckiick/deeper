@@ -1913,7 +1913,7 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 			npl = ndn(b, *cr, *cc, gat.m.dir, newgat.side);
 			if ((npl < 0) && (newgat.side < 0)) {
 				npl = ndn(b, newgat.ewr, newgat.ewc, newgat.m.dir, 1);
-				if (npl <= 0) break;
+				if (npl < 0) break;
 				pl = SEP;
 				cr = &newgat.ewr; cc = &newgat.ewc;
 				newgat.side = 1;
@@ -1922,8 +1922,10 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 				pl = npl;
 			}
 			newgat.nodeid = gc(gaddag[newgat.nodeid]);
-			*cc += (1 - newgat.m.dir) * newgat.side;
-			*cr += (newgat.m.dir) * newgat.side;
+			if (pl != SEP) {
+				*cc += (1 - newgat.m.dir) * newgat.side;
+				*cr += (newgat.m.dir) * newgat.side;
+			}
 		}
 		newgat.sct.ttl_tbs = newgat.sct.ttl_ts;
 		ASSERT((((pl > 0) && (newgat.nodeid > 0))));
@@ -1941,6 +1943,10 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 			*mvsndx += 1; movecnt++; gmcnt++;
 		}
 		pl = npl;
+		/* another special case: we hit the wall. */
+		if (pl < 0) {
+			newgat.side = 1;
+		}
 		newgat.nodeid = gc(gaddag[newgat.nodeid]);
 		*cc += (1 - newgat.m.dir) * newgat.side;;
 		*cr += (newgat.m.dir) * newgat.side;
@@ -2026,14 +2032,16 @@ seponly:
 	if ((newgat.side < 0) && (bbs & SEPBIT)) {
 		npl = ndn(b, newgat.ewr, newgat.ewc, newgat.m.dir, 1);
 		if (npl >= 0) {
+			newgat.sct = sct;
 			newgat.m.tiles[newgat.ndx] = 0;
 			newgat.played--;
 			newgat.r = gat.r;
+			newgat.rbs = gat.rbs;
 			newgat.swr += newgat.m.dir;
 			newgat.swc += (1 - newgat.m.dir);
 			newgat.side = 1;
-			newgat.ewr += newgat.m.dir;
-			newgat.ewc += (1 - newgat.m.dir);
+//			newgat.ewr += newgat.m.dir;
+//			newgat.ewc += (1 - newgat.m.dir);
 			curid = gotol(SEP, saveid);
 			newgat.nodeid = gc(gaddag[curid]);
 			revstr(newgat.m.tiles);
