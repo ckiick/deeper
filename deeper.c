@@ -517,7 +517,7 @@ pluckrack2(rack_t *r, letter_t l, bs_t *bs)
 			printlstr(r->tiles); printf("\n");
 		}
 	}
-	VERB(VNOISY, "Plucked rack now ") {
+	VERB(VNOISY, "Plucked2 rack now ") {
 		printlstr(r->tiles); printf("\n");
 	}
 	if (strchr(r->tiles, l) == NULL) {
@@ -852,8 +852,8 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 	while ( (spl = nextl(&nbs, &gid)) ) {
 		gid = gotol(spl, gid);
 		lid = gc(gaddag[gid]);
-		cr = row + 2 * dr;
-		cc = col + 2 * dc;
+//		cr = row + 2 * dr;
+//		cc = col + 2 * dc;
 		do {
 			if (nldn(b, cr, cc, dir, dr+dc) && gf(gaddag[gid])) {
 				setbit(fbs, spl-1);
@@ -2031,7 +2031,7 @@ DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n"
 	}
 seponly:
 	/* and do SEP if needed */
-	if ((newgat.side < 0) && (bbs & SEPBIT)) {
+	if ((newgat.side < 0) && (bbs & SEPBIT) && (newgat.played > 0)) {
 		npl = ndn(b, newgat.ewr, newgat.ewc, newgat.m.dir, 1);
 		if (npl >= 0) {
 			newgat.sct = sct;
