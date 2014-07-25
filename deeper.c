@@ -846,7 +846,8 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 	dr = dir * end;
 	dc = (1 - dir) * end;
 
-	gid = gc(gaddag[nid]);
+//	gid = gc(gaddag[nid]);
+	gid = nid;
 	nbs = bitset[gid];
 	while ( (spl = nextl(&nbs, &gid)) ) {
 		gid = gotol(spl, gid);
@@ -854,7 +855,7 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 		cr = row + 2 * dr;
 		cc = col + 2 * dc;
 		do {
-			if (nldn(b, cr, cc, dir, dr+dc) && gf(gaddag[nid])) {
+			if (nldn(b, cr, cc, dir, dr+dc) && gf(gaddag[gid])) {
 				setbit(fbs, spl-1);
 				break;
 			}
@@ -1931,6 +1932,7 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 		ASSERT((((pl > 0) && (newgat.nodeid > 0))));
 		if (gf(gaddag[newgat.nodeid]) && (newgat.played > 0)) {
 			newgat.m.score = finalscore(newgat.sct);
+			newgat.m.row = newgat.swr; newgat.m.col = newgat.swc;
 			VERB(VNOISY, "at_d:") {
 				printmove(&(newgat.m), -1);
 			}

@@ -4,8 +4,11 @@ GITPATH=/pkg/local/bin:/usr/bin
 # note: solaris cc doesn't like inline functions without prototypes.
 # there's an option to override it. need to find it.
 
-#REV := $(shell PATH=$(GITPATH) git rev-list HEAD --count)
-REV=77
+REV := $(shell PATH=$(GITPATH) git rev-list HEAD --count)
+#REV=77
+
+GP=ggprof
+#GP=gprof
 
 
 all:	dict gdexp deeper
@@ -23,8 +26,8 @@ prof:	deeper-prof
 	rm -f gmon.out deeper.gc* mon.out
 	./deeper-prof -T 5 -b A -n 1 -t -ss
 	gcov deeper.c
-	gprof -b -c ./deeper-prof > gprof.out
-	gprof -b -l ./deeper-prof >> gprof.out
+	$(GP) -b -c ./deeper-prof > gprof.out
+	$(GP) -b -l ./deeper-prof >> gprof.out
 	head -23 gprof.out
 
 perf:	deeper-nd
