@@ -1807,7 +1807,7 @@ if (dtrap == 0) {
  * other few items are stack items.
  */
 
-#define MAXMVS	8192	/* mvs array. expand as needed. */
+#define MAXMVS	(16*1024)/* mvs array. expand as needed. */
 
 
 inline void
@@ -2024,7 +2024,7 @@ DBG(DBG_GEN, "[%d] recurse at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d\n"
 	/* handle blank */
 	if (newgat.rbs & UBLBIT) {
 		curid = saveid;
-		rackem(&(gat.r), &(newgat.r), &(newgat.rbs), UBLANK);
+		rackem(&(newgat.r), &(newgat.r), &(newgat.rbs), UBLANK);
 		bs = ALLPHABITS;
 		bl = BB;
 		goto onceagain;
