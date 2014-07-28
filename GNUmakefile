@@ -29,13 +29,16 @@ prof:	deeper-prof
 	$(GP) -b -c ./deeper-prof > gprof.out
 	$(GP) -b -l ./deeper-prof >> gprof.out
 	head -23 gprof.out
+	perf record ./deeper-prof -T 5 -b A -n 1 -t -ss
+	perf report ./deeper-prof > gperf.out
+	perf annotate ./deeper-prof >> gperf.out
 
 perf:	deeper-nd
 	./deeper-nd -T 5 -b A -n 1 -t -ss > perf.$(REV).out
 	tail -2 perf.$(REV).out
 
 deeper-prof:	deeper.c deeper.h
-	gcc -g -pg -fprofile-arcs -ftest-coverage -DREV=$(REV) -o deeper-prof deeper.c -lrt
+	gcc -ggdb -g -pg -fprofile-arcs -ftest-coverage -DREV=$(REV) -o deeper-prof deeper.c -lrt
 
 clean:
 	rm -rf deeper gdexp mkbitset

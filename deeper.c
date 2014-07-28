@@ -842,7 +842,11 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 	int dc, dr;
 	int gid, lid;
 
-	if (nid < 0) return;		/* safety catch */
+	if (nid < 0) {
+		b->spaces[row][col].mbs[1-dir] = 0;
+		return;
+	}
+	ASSERT(b->spaces[cr][cc].b.f.letter != '\0');
 	dr = dir * end;
 	dc = (1 - dir) * end;
 
@@ -852,14 +856,15 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 	while ( (spl = nextl(&nbs, &gid)) ) {
 		gid = gotol(spl, gid);
 		lid = gc(gaddag[gid]);
-//		cr = row + 2 * dr;
-//		cc = col + 2 * dc;
+		cr = row + 2* dr;
+		cc = col + 2* dc;
 		do {
 			if (nldn(b, cr, cc, dir, dr+dc) && gf(gaddag[gid])) {
 				setbit(fbs, spl-1);
 				break;
 			}
 			wl = b->spaces[cr][cc].b.f.letter;
+	//		ASSERT(wl != '\0');
 			if (!(l2b(wl) & bitset[lid])) {
 				/* it's not a word. */
 				break;
@@ -1190,6 +1195,7 @@ DBG(DBG_MOVE, "moving from %d to %d via %c\n", nid, gc(gaddag[gotol(l,nid)]), l2
 	ASSERT(nldn(b, cr, cc, m->dir, -1));
 	ASSERT((cr == m->row) && (cc == m->col));
 	ASSERT(i < 0);
+	ASSERT(sp->b.f.letter != '\0');
 	for (side = -1; side <= 1; side +=2) {
 		if (side == 1) {
 			dc *= -side; dr *= -side;
@@ -1228,30 +1234,84 @@ DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, 
 	return 1;
 }
 
-/* mm6: while making move, remove letters from rack.
+/* rewrite. use ndn. ASSERT much. try to stay simple
+ * assume playthru.
  */
 int
-makemove6(board_t *b, move_t *m, int playthru, int umbs, rack_t *r)
+makemove8(board_t *b, move_t *m, int playthru, int umbs, rack_t *r)
 {
-	int cr, cc, dr, dc, ts, i, tts, er, ec;
+	int swr,swc;
+	int ewr, ewc;
+	int curid = 1;
+	int dr = m->dir;
+	int dc = (1 - m->dir);
 	space_t *sp;
-	letter_t l;
-	bs_t fbs;
-	int side;
-	int len = 0;
+	letter_t pl;
+	int i = strlen(m->tiles);
+	int cr, cc;
+	letter_t npl, nnpl;
+	int ts = 0;
+	int tts = 0;
 
-	dr = m->dir;
-	dc = 1 - m->dir;
-	tts = 0;
-	int nid = 1;
-	int wlen = 0;
+	ewr = m->row + (dr * (i-1));
+	ewc = m->col + (dc * (i-1));
+	cr = ewr; cc = ewc;
+	ASSERT(playthru);
 
-	/* start at the end of the word. */
-	i = strlen(m->tiles);
-DBG(DBG_MOVE, "making move ") {
-	printmove(m, -1); printf("with rack "); printlstr(r->tiles); printf("\n");
-}
-	if (i == 0) { return 0; }	// an empty play. (not legal)
+	for (i = strlen(m->tiles) - 1; i >=0; i--)
+	{
+		cr = m->row + (dr * i);
+		cc = m->col + (dc * i);
+		sp = &(b->spaces[cr][cc]);
+		pl = m->tiles[i];
+		if ((curid <= 0) || (!(l2b(pl) & bitset[curid]))) {
+			vprintf(VNORM, "not a valid move ") {
+				printmove(m, -1);
+				return -1;
+			}
+		}
+		pluckrack(r, pl);
+		if (sp != '\0') {
+			if (sp->b.f.letter != pl) {
+vprintf(VVERB, "warning[C]: move[%d] %c doesn't match board %c at %d,%d\n", i, l2c(m->tiles[i]), l2c(sp->b.f.letter), cr, cc);
+				pl = sp->b.f.letter;
+			}
+		} else {
+			sp->b.f.letter = pl;
+			sp->b.f.anchor = 0;
+			updatemls(b, m->dir, cr, cc, lval(pl));
+		}
+		ts = lval(pl);
+		tts += ts;
+		curid = gotol(pl, curid);
+		curid = gc(gaddag[curid]);
+	}
+	ASSERT((cr == m->row) && (cc == m->col));
+	npl = ndn(b, m->row, m->col, m->dir, -1);
+	ASSERT(npl <= 0);
+	if (npl == 0) {
+		/* a space. */
+		nnpl = ndn(b, cr - dr, cc - dc, m->dir, -1);
+		if (nnpl <= 0) {
+			sp = &(b->spaces[cr-dr][cc-dc]);
+			ASSERT(sp->b.f.letter == '\0');
+			sp->b.f.anchor |= (1-m->dir)+1;
+		} else {
+			dobridge(...  );
+//			sp->b.f.mls[1-m->dir] = tts + b->spaces[cr-dr][cc-dc].b.f.mls[1-m->dir];
+		}
+	}
+	npl = ndn(b, ewr, ewc, m->dir, 1);
+	curid = gotol(SEP, curid);
+	curid = gc(gaddag[curid]);
+	if ((curid <= 0) || (!(SEPBIT & bitset[curid]))) {
+		vprintf(VNORM, "not a valid move ") {
+			printmove(m, -1);
+			return -1;
+		}
+	}
+
+
 	if (playthru) {
 		wlen = i;
 	} else {
@@ -1309,6 +1369,7 @@ DBG(DBG_MOVE, "moving from %d to %d via %c\n", nid, gc(gaddag[gotol(l,nid)]), l2
 	ASSERT(nldn(b, cr, cc, m->dir, -1));
 	ASSERT((cr == m->row) && (cc == m->col));
 	ASSERT(i < 0);
+	ASSERT(sp->b.f.letter != '\0');
 	for (side = -1; side <= 1; side +=2) {
 		if (side == 1) {
 			dc *= -side; dr *= -side;
@@ -1336,7 +1397,10 @@ DBG(DBG_MOVE, "moving from %d to %d via %c\n", nid, gc(gaddag[gotol(l,nid)]), l2
 DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, tts, finals(nid), nid);
 			} else {
 				/* it's a bridge space */
-				dobridge(b, nid, cr, cc, m->dir, side);
+/*
+				dobridge(b, nid, cr+dr, cc+dc, m->dir, side);
+*/
+				dobridge(b, nid, er, ec, m->dir, side);
 				sp->b.f.mls[1-m->dir] = tts + b->spaces[cr-dr][cc-dc].b.f.mls[1-m->dir];
 			}
 		}
@@ -1807,7 +1871,7 @@ if (dtrap == 0) {
  * other few items are stack items.
  */
 
-#define MAXMVS	(32*1024)/* mvs array. expand as needed. */
+#define MAXMVS	(6*1024)/* mvs array. expand as needed. */
 
 
 inline void
@@ -1892,7 +1956,7 @@ DBG(DBG_GEN, "[%d] at %d,%d/%d to %d,%d (%d) node=%d rbs=%x played=%d", gat.ndx,
 	pl = ndn(b, *cr, *cc, gat.m.dir, gat.ndx == 0 ? 0 : gat.side);
 	if (pl < 0) return  movecnt;
 	if (gat.ndx > 0) {
-		*cc += (1 - gat.m.dir) * gat.side;;
+		*cc += (1 - gat.m.dir) * gat.side;
 		*cr += (gat.m.dir) * gat.side;
 	}
 
