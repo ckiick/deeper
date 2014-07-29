@@ -912,7 +912,7 @@ dobridge(board_t *b, int nid, int row, int col, int dir, int end)
 				/* it's not a word. */
 				break;
 			}
-			if (nldn(b, cr, cc, dir, dr+dc) && gf(gaddag[gid])) {
+			if (nldn(b, cr, cc, dir, dr+dc) && gf(gaddag[lid])) {
 				setbit(&fbs, spl - 1);
 				break;
 			}

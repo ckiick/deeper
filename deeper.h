@@ -203,8 +203,8 @@ static inline void clrbit(volatile uint32_t *addr, int nr)
 #else
 //#define _popc(w,c)	asm("popc %1,%0\t\n" : "+r" (c) : "r" (w))
 #define popc    __builtin_popcount
-#define	setbit(wp,b)		((*w)|=(0x01<<(b)))
-#define	clrbit(wp,b)		((*w)&=(~(0x01<<(b))))
+#define	setbit(wp,b)		((*wp)|=(0x01<<(b)))
+#define	clrbit(wp,b)		((*wp)&=(~(0x01<<(b))))
 // #define _ffs(w,c)	asm("neg %1, %0\t\n"			\
 //				"xnor %1, %0, %0\t\n"		\
 //				"popc %0, %0\t\n"		\
