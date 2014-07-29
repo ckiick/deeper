@@ -1281,6 +1281,44 @@ DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, 
 	return 1;
 }
 
+/*
+ * we just played letter l on the board, now we need to update the
+ * board state info - mls and mbs. which requires some crawling.
+ * Several scenarios to take care of, so it's going to be long.
+ * note: dir is orthoganol to original move.
+ */
+void
+updatemlsbs(board_t *b, int row, int col, int dir, letter_t l)
+{
+	space_t *sp;
+	int dr = dir;
+	int dc = 1 - dir;
+	letter_t lb, la;
+	letter_t bepl;
+	letter_t nnpl;
+	int cr = row;
+	int cc = col;
+	int aer = row, aec = col;
+	int ts = lval(l);
+	int anid = 1;
+
+	/* first thing to do is to check 'after' */
+	la = ndn(b, row, col, dir, 1);
+	if (la > 0) {
+		/* something after, we can do a couple of things. */
+		while ((aepl = ndn(b, aer, aec, dir, 1)) > 0) {
+			aer += dr; aec += dc;
+		}
+		/* found the end of the word, good. */
+		/* adjust our settings. */
+		ts += b->spaces[row+dr][col+dc].b.f.mls[1-dir];
+		/* use mnid */
+//		anid = gotol(l, anid);
+		anid = gc(gaddag[anid]);
+	}
+
+}
+
 /* rewrite. use ndn. ASSERT much. try to stay simple
  * assume playthru. Set mnids.
  */
