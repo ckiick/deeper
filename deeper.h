@@ -188,13 +188,23 @@ typedef uint32_t bs_t;		// bitset
 #if !defined(__sun)
 #define	ffb	__builtin_ffs
 #define popc    __builtin_popcount
-#define setbit(w,b) 	asm("btsl %1,%0" : "+r" (w) : "g" (b))
-#define clrbit(w,b) 	asm("btrl %1,%0" : "+r" (w) : "g" (b))
+//#define setbit(w,b) 	asm("btsl %1,%0" : "+r" (w) : "g" (b))
+//#define clrbit(w,b) 	asm("btrl %1,%0" : "+r" (w) : "g" (b))
+
+static inline void setbit(volatile uint32_t *addr, int nr)
+{
+	asm volatile("btsl %1,%0" : "+m" (*(volatile uint32_t *) (addr)) : "Ir" (nr) : "memory");
+}
+
+static inline void clrbit(volatile uint32_t *addr, int nr)
+{
+	asm volatile("btrl %1,%0" : "+m" (*(volatile uint32_t *) (addr)) : "Ir" (nr));
+}
 #else
 //#define _popc(w,c)	asm("popc %1,%0\t\n" : "+r" (c) : "r" (w))
 #define popc    __builtin_popcount
-#define	setbit(w,b)		((w)|=(0x01<<(b)))
-#define	clrbit(w,b)		((w)&=(~(0x01<<(b))))
+#define	setbit(wp,b)		((*w)|=(0x01<<(b)))
+#define	clrbit(wp,b)		((*w)&=(~(0x01<<(b))))
 // #define _ffs(w,c)	asm("neg %1, %0\t\n"			\
 //				"xnor %1, %0, %0\t\n"		\
 //				"popc %0, %0\t\n"		\
