@@ -827,11 +827,14 @@ ndn(board_t *b, int r, int c, const int dir, const int side)
 	return -1;
 }
 
-/* goes with mm8. */
+/* goes with mm8.
+ * row,col is the gap space. nid shoud be the child of the last letter
+ * played next to gap.
+ */
 bs_t
 dobridge2(board_t *b, int nid, int row, int col, int dir, int end)
 {
-	int cr, cc;
+	int cr = row, cc = col;
 	space_t *sp;
 	bs_t gbs = 0;
 	bs_t bs;
@@ -841,14 +844,14 @@ dobridge2(board_t *b, int nid, int row, int col, int dir, int end)
 	int curid = nid;
 	int gid, gcid;
 
-	sp = &(b->spaces[cr][cc]);
+	sp = &(b->spaces[row][col]);
 	ASSERT(sp->b.f.letter == '\0');
 	dr = end * dir;
 	dc = end * (1 - dir);
 
 	bs = bitset[nid];
 	/* prune with other side of gap. */
-	bs &= b->spaces[cr + dr][cc+dc].mnid[dir];
+	bs &= b->spaces[cr+dr][cc+dc].mnid[dir];
 	if (bs == 0) return 0;
 	while (gl = nextl(&bs, &curid)) {
 		gid = gotol(gl, curid);
@@ -864,7 +867,7 @@ dobridge2(board_t *b, int nid, int row, int col, int dir, int end)
 			}
 		}
 		if ((nl == 0) && (gf(gaddag[gid]))) {
-			gbs |= l2b(nl);
+			setbit(&gbs, nl - 1);
 		}
 	}
 	return gbs;
@@ -1284,7 +1287,7 @@ DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, 
 /*
  * we just played letter l on the board, now we need to update the
  * board state info - mls and mbs. which requires some crawling.
- * Several scenarios to take care of, so it's going to be long.
+ * Go to end of word and work back, then set ends.
  * note: dir is orthoganol to original move.
  */
 void
@@ -1297,8 +1300,11 @@ updatemlsbs(board_t *b, int row, int col, int dir, letter_t l)
 	letter_t npl;
 	int cr, cc;
 	int aer = row, aec = col;
-	int ts = lval(l);
+	int ts;
 	int curid = 1;
+	int sid;
+	bs_t fbs;
+	space_t *sp;
 
 	/* simplify. find the end, run it back to top. */
 	while ((aepl = ndn(b, aer, aec, dir, 1)) > 0) {
@@ -1306,20 +1312,60 @@ updatemlsbs(board_t *b, int row, int col, int dir, letter_t l)
 	}
 	/* at the "end" of the ortho word. */
 	pl = b->spaces[aer][aec].b.f.letter;
-	ts == lval(pl);
+	ASSERT(pl != '\0');
+	ts = lval(pl);
 	cr = aer; cc = aec;
 	while ((pl = ndn(b, cr, cc, dir, -1)) > 0) {
 		ts += lval(pl);
+		ASSERT(curid > 0);
 		curid = gotol(pl, curid);
-		curid = gc(gaddad[curid]);
-		cr += dr; cc += dc;
+		curid = gc(gaddag[curid]);
+		cr -= dr; cc -= dc;
 	}
+	/* at beginning now. */
 	if (pl == 0) {
-		b->spaces[cr][cc].b.f.lms[1-dir] = ts;
-		b->spaces[cr-dr][cc-dc].b.f.lms[1-dir] = ts;
-		b->spaces.mbs[dir] = finals(bitset[curid]);
+		sp = &(b->spaces[cr][cc]);
+		ASSERT(sp->b.f.letter != '\0');
+		cr -= dr; cc-=dc;
+		npl = ndn(b, cr, cc, dir, -1);
+		if (npl <= 0) {
+			sp->b.f.mls[1-dir] = ts;
+			sp->mnid[dir] = curid;
+			sp = &(b->spaces[cr][cc]);
+			ASSERT(sp->b.f.letter == '\0');
+			sp->b.f.anchor |= (1-dir)+1;
+			sp->b.f.mls[1-dir] = ts;
+			sp->mbs[1-dir] = finals(curid);
+		} else {
+			sp->b.f.mls[1-dir] = ts + b->spaces[cr-dr][cc-dc].b.f.mls[1-dir];
+			sp->mbs[1-dir] = dobridge2(b, curid, cr, cc, dir, -1);
+		}
 	}
-
+	/* fix other end */
+	if (aepl == 0) {
+		sp = &(b->spaces[aer][aec]);
+		ASSERT(sp->b.f.letter != '\0');
+		aer += dr; aec += dc;
+		npl = ndn(b, aer, aec, dir, 1);
+		if (SEPBIT & bitset[curid]) {
+			curid = gotol(SEP, curid);
+			curid = gc(gaddag[curid]);
+		} else {
+			curid = 0;
+		}
+		if (npl <= 0) {
+			sp->b.f.mls[1-dir] = ts;
+//			sp->mnid[dir] = curid;
+			sp = &(b->spaces[aer][aec]);
+			ASSERT(sp->b.f.letter == '\0');
+			sp->b.f.anchor |= (1-dir)+1;
+			sp->b.f.mls[1-dir] = ts;
+			sp->mbs[1-dir] = finals(curid);
+		} else {
+			sp->b.f.mls[1-dir] = ts + b->spaces[aer+dr][aec+dc].b.f.mls[1-dir];
+			sp->mbs[1-dir] = dobridge2(b, curid, aer, aec, dir, 1);
+		}
+	}
 }
 
 /* rewrite. use ndn. ASSERT much. try to stay simple
@@ -1356,66 +1402,67 @@ makemove8(board_t *b, move_t *m, int playthru, int umbs, rack_t *r)
 				return -1;
 			}
 		}
-		if (sp != '\0') {
+		if (sp->b.f.letter != '\0') {
 			if (sp->b.f.letter != pl) {
 vprintf(VVERB, "warning[C]: move[%d] %c doesn't match board %c at %d,%d\n", i, l2c(m->tiles[i]), l2c(sp->b.f.letter), cr, cc);
 				pl = sp->b.f.letter;
 			}
 		} else {
-			updatemls(b, m->dir, cr, cc, lval(pl));
-			//updatembs2(b, m->dir, cr, cc, pl);
-			pluckrack(r, pl);
 			sp->b.f.letter = pl;
 			sp->b.f.anchor = 0;
+			updatemlsbs(b, cr, cc, 1-m->dir, pl);
+			// updatemls(b, m->dir, cr, cc, lval(pl));
+			// updatembs2(b, m->dir, cr, cc, pl);
+			pluckrack(r, pl);
 		}
 		ts = lval(pl);
 		tts += ts;
 		curid = gotol(pl, curid);
 		curid = gc(gaddag[curid]);
 	}
+	/* just ran from end of word to beginning */
 	ASSERT((cr == m->row) && (cc == m->col));
 	npl = ndn(b, m->row, m->col, m->dir, -1);
 	ASSERT(npl <= 0);
 	if (npl == 0) {
-		/* a space. */
-		nnpl = ndn(b, cr - dr, cc - dc, m->dir, -1);
+		/* a space before word. */
+		cr -= dr; cc -= dc;
+		nnpl = ndn(b, cr, cc, m->dir, -1);
 		if (nnpl <= 0) {
 			sp->b.f.mls[1-m->dir] = tts;
 			sp->mnid[m->dir] = curid;
-			sp = &(b->spaces[cr-dr][cc-dc]);
+			sp = &(b->spaces[cr][cc]);
 			ASSERT(sp->b.f.letter == '\0');
 			sp->b.f.anchor |= (1-m->dir)+1;
 			sp->b.f.mls[1-m->dir] = tts;
 			sp->mbs[1-m->dir] = finals(curid);
 		} else {
-//			dobridge2(...  );
 			sp->b.f.mls[1-m->dir] = tts + b->spaces[cr-dr][cc-dc].b.f.mls[1-m->dir];
+			sp->mbs[1-m->dir] = dobridge2(b, curid, cr, cc, m->dir, -1);
 		}
 	}
 	/* now do the other end. */
 	npl = ndn(b, ewr, ewc, m->dir, 1);
 	if (npl == 0) {
-		if ((curid <= 0) || (!(SEPBIT & bitset[curid]))) {
-			VERB(VNORM, "not a valid move ") {
-				printmove(m, -1);
-				return -1;
-			}
+		ewr += dr; ewc += dc;
+		nnpl = ndn(b, ewr, ewc, m->dir, 1);
+		if (SEPBIT & bitset[curid]) {
+			curid = gotol(SEP, curid);
+			curid = gc(gaddag[curid]);
+		} else {
+			curid = 0;
 		}
-		curid = gotol(SEP, curid);
-		curid = gc(gaddag[curid]);
-		ASSERT(curid > 0);
-		nnpl = ndn(b, cr + dr, cc + dc, m->dir, 1);
 		if (nnpl <= 0) {
 			sp->b.f.mls[1-m->dir] = tts;
-			sp->mnid[m->dir] = curid;
-			sp = &(b->spaces[cr+dr][cc+dc]);
+//			sp->mnid[m->dir] = curid;
+			sp = &(b->spaces[ewr][ewc]);
 			ASSERT(sp->b.f.letter == '\0');
 			sp->b.f.anchor |= (1-m->dir)+1;
 			sp->b.f.mls[1-m->dir] = tts;
 			sp->mbs[1-m->dir] = finals(curid);
 		} else {
-//			dobridge2(...  );
-			sp->b.f.mls[1-m->dir] = tts + b->spaces[cr+dr][cc+dc].b.f.mls[1-m->dir];
+			sp->b.f.mls[1-m->dir] = tts + b->spaces[ewr+dr][ewc+dc].b.f.mls[1-m->dir];
+			sp->mbs[1-m->dir] = dobridge2(b, curid, ewr, ewc, m->dir, 1);
 		}
 	}
 	return 1;
@@ -2945,7 +2992,8 @@ veep_b(position_t *P, move_t *mvs, int mvcnt)
 			maxsc = mvs[i].score;
 		}
 	}
-	makemove6(&(P->b), &(mvs[bigm]), 1, 0, &(P->r));
+//	makemove6(&(P->b), &(mvs[bigm]), 1, 0, &(P->r));
+	makemove8(&(P->b), &(mvs[bigm]), 1, 0, &(P->r));
 	P->m = mvs[bigm];
 	P->stats.evals += mvcnt;
 	P->mvndx = bigm;
@@ -3047,7 +3095,8 @@ DBG(DBG_GREED, "getting greedy at %d, %d with rack ", gm.row, gm.col) {
 	printlstr(r.tiles); printf("\n");
 }
 	maxm = greedy(gb, &gm, 0, &r, 1, newsct);
-	makemove6(gb, &maxm, 1, 0, &r);
+//	makemove6(gb, &maxm, 1, 0, &r);
+	makemove8(gb, &maxm, 1, 0, &r);
 	totalscore = maxm.score;
 
 	while (strlen(maxm.tiles) > 0) {
@@ -3089,7 +3138,8 @@ VERB(VVERB, "ceo ") {
 		}
 		totalscore += maxm.score;
 
-		makemove6(gb, &maxm, 1, 0, &r);
+//		makemove6(gb, &maxm, 1, 0, &r);
+		makemove8(gb, &maxm, 1, 0, &r);
 	}
 	/* correct for leftover letters. */
 	subscore = unbonus(&r, globalbag, bagpos);
@@ -3225,7 +3275,8 @@ DBG(DBG_LAH, "[%d]recurse with move %d=", depth,i) {
 	printmove(&(mvs[i]), -1);
 }
 		iP = *P;
-		makemove6(&(iP.b), &(mvs[i]), 1, 0, &(iP.r));
+//		makemove6(&(iP.b), &(mvs[i]), 1, 0, &(iP.r));
+		makemove8(&(iP.b), &(mvs[i]), 1, 0, &(iP.r));
 		iP.m = mvs[i];
 		iP.mvndx = i;
 		iP.sc += iP.m.score;
@@ -4186,7 +4237,8 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 			vprintf(VNORM, "%s scores %d\n", argstr, sc);
 		}
 		if (action&ACT_MOVE) {
-			makemove6(&sb, &argmove, action&ACT_PLAYTHRU, 0, NULL);
+//			makemove6(&sb, &argmove, action&ACT_PLAYTHRU, 0, NULL);
+			makemove8(&sb, &argmove, action&ACT_PLAYTHRU, 0, NULL);
 			VERB(VNORM, "results of move:\n") {
 				showboard(sb, B_TILES);
 			}
