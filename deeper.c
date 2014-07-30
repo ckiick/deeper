@@ -1290,31 +1290,34 @@ DBG(DBG_MOVE,"at %d,%d dir=%d, mls=%d, mbs=%x (from nid=%d)\n", cr, cc, m->dir, 
 void
 updatemlsbs(board_t *b, int row, int col, int dir, letter_t l)
 {
-	space_t *sp;
 	int dr = dir;
 	int dc = 1 - dir;
-	letter_t lb, la;
-	letter_t bepl;
-	letter_t nnpl;
-	int cr = row;
-	int cc = col;
+	letter_t aepl;
+	letter_t pl;
+	letter_t npl;
+	int cr, cc;
 	int aer = row, aec = col;
 	int ts = lval(l);
-	int anid = 1;
+	int curid = 1;
 
-	/* first thing to do is to check 'after' */
-	la = ndn(b, row, col, dir, 1);
-	if (la > 0) {
-		/* something after, we can do a couple of things. */
-		while ((aepl = ndn(b, aer, aec, dir, 1)) > 0) {
-			aer += dr; aec += dc;
-		}
-		/* found the end of the word, good. */
-		/* adjust our settings. */
-		ts += b->spaces[row+dr][col+dc].b.f.mls[1-dir];
-		/* use mnid */
-//		anid = gotol(l, anid);
-		anid = gc(gaddag[anid]);
+	/* simplify. find the end, run it back to top. */
+	while ((aepl = ndn(b, aer, aec, dir, 1)) > 0) {
+		aer += dr; aec += dc;
+	}
+	/* at the "end" of the ortho word. */
+	pl = b->spaces[aer][aec].b.f.letter;
+	ts == lval(pl);
+	cr = aer; cc = aec;
+	while ((pl = ndn(b, cr, cc, dir, -1)) > 0) {
+		ts += lval(pl);
+		curid = gotol(pl, curid);
+		curid = gc(gaddad[curid]);
+		cr += dr; cc += dc;
+	}
+	if (pl == 0) {
+		b->spaces[cr][cc].b.f.lms[1-dir] = ts;
+		b->spaces[cr-dr][cc-dc].b.f.lms[1-dir] = ts;
+		b->spaces.mbs[dir] = finals(bitset[curid]);
 	}
 
 }
