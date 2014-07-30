@@ -851,7 +851,7 @@ dobridge2(board_t *b, int nid, int row, int col, int dir, int end)
 
 	bs = bitset[nid];
 	/* prune with other side of gap. */
-	bs &= b->spaces[cr+dr][cc+dc].mnid[dir];
+//	bs &= b->spaces[cr+dr][cc+dc].mnid[dir];
 	if (bs == 0) return 0;
 	while (gl = nextl(&bs, &curid)) {
 		gid = gotol(gl, curid);
@@ -867,7 +867,7 @@ dobridge2(board_t *b, int nid, int row, int col, int dir, int end)
 			}
 		}
 		if ((nl == 0) && (gf(gaddag[gid]))) {
-			setbit(&gbs, nl - 1);
+			setbit(&gbs, gl - 1);
 		}
 	}
 	return gbs;
@@ -1330,7 +1330,7 @@ updatemlsbs(board_t *b, int row, int col, int dir, letter_t l)
 		npl = ndn(b, cr, cc, dir, -1);
 		if (npl <= 0) {
 			sp->b.f.mls[1-dir] = ts;
-			sp->mnid[dir] = curid;
+//			sp->mnid[dir] = curid;
 			sp = &(b->spaces[cr][cc]);
 			ASSERT(sp->b.f.letter == '\0');
 			sp->b.f.anchor |= (1-dir)+1;
@@ -1430,7 +1430,7 @@ vprintf(VVERB, "warning[C]: move[%d] %c doesn't match board %c at %d,%d\n", i, l
 		nnpl = ndn(b, cr, cc, m->dir, -1);
 		if (nnpl <= 0) {
 			sp->b.f.mls[1-m->dir] = tts;
-			sp->mnid[m->dir] = curid;
+//			sp->mnid[m->dir] = curid;
 			sp = &(b->spaces[cr][cc]);
 			ASSERT(sp->b.f.letter == '\0');
 			sp->b.f.anchor |= (1-m->dir)+1;
