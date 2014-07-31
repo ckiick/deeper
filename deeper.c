@@ -3199,14 +3199,14 @@ mcnt += P->stats.moves;
 		P->stats.evtime += aft - fore;
 		P->depth++;
 		printpos(*P);
-DBG(DBG_CREEP, "creep chain is:") {
+DBG(DBG_CREEP, "creep chain is:\n") {
 	position_t *cP = P;
 	while (cP != NULL) {
-		printmove(&(cP->m), -1);
+		printf("  %d: ", cP->depth); printmove(&(cP->m), -1);
 		cP = cP->next;
 	}
 }
-DBG(DBG_CREEP, "creep mv %dscore =%d P->next = %p\n", P->depth, P->sc,  P->next);
+DBG(DBG_CREEP, "mv %dscore =%d P->next = %p\n", P->depth, P->sc,  P->next);
 		fore = gethrtime();
 		rv = lah(P, 0, level);
 		aft = gethrtime();
@@ -3260,7 +3260,7 @@ ASSERT(mvsndx == P->mvcnt);
 		if (score > P->stats.wordhs) P->stats.wordhs = score;
 		P->next = NULL;
 		free(mvs); mvsndx = 0;
-DBG(DBG_LAH, "[%d]veep found move =", depth) {
+DBG(DBG_LAH, "[%d]veep found (%d) move =", depth, P->sc) {
 	printmove(&(P->m), -1);
 }
 		return 1;
@@ -3307,7 +3307,7 @@ DBG(DBG_LAH, "[%d]recurse with move %d=", depth,i) {
 	}
 	*P = maxP;
 //	P->m = mvs[maxi];
-DBG(DBG_LAH, "[%d]returning with move=", depth) {
+DBG(DBG_LAH, "[%d]returning for score %d/%d/%d with move=", depth, maxsc, maxP.sc, maxP.m.score) {
 	printmove( &(maxP.m), -1);
 	showboard(P->b, B_TILES);
 }
