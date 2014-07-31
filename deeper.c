@@ -3199,14 +3199,14 @@ mcnt += P->stats.moves;
 		P->stats.evtime += aft - fore;
 		P->depth++;
 		printpos(*P);
-DBG(DBG_LAH, "creep chain is:") {
+DBG(DBG_CREEP, "creep chain is:") {
 	position_t *cP = P;
 	while (cP != NULL) {
 		printmove(&(cP->m), -1);
 		cP = cP->next;
 	}
 }
-DBG(DBG_LAH, "creep mv %dscore =%d P->next = %p\n", P->depth, P->sc,  P->next);
+DBG(DBG_CREEP, "creep mv %dscore =%d P->next = %p\n", P->depth, P->sc,  P->next);
 		fore = gethrtime();
 		rv = lah(P, 0, level);
 		aft = gethrtime();

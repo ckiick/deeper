@@ -62,6 +62,7 @@ typedef uint64_t hrtime_t;
 #define DBG_MOVE	0x00010000	// when making moves
 #define DBG_GREED	0x00020000	// greedy strategy
 #define DBG_LAH		0x00040000	// look ahead
+#define DBG_CREEP	0x00080000	// creep strat
 #define DBG_DBG		0x40000000	// debugger: debug thyself.
 #define DBG_ALL		0x7FFFFFFF	// extremely noisy
 #define DBG_NONE	0x80000000	// doesn't match anything
@@ -88,7 +89,8 @@ char dbgs[32][DBG_MAX_NAME] = {
 	"move",		//DBG_MOVE	0x00010000
 	"greed",	//DBG_GREED	0x00020000
 	"lah",		//DBG_LAH	0x00040000
-"","","","","","","","","","","",
+	"creep",	//DBG_CREEP	0x00080000
+"","","","","","","","","","",
 	"dbg",		//DBG_DBG	0x40000000
 	"none"		//DBG_NONE	0x80000000
 };
