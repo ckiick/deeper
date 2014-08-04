@@ -1014,6 +1014,46 @@ anagramstr(letter_t *letters, int doscore)
 	return doanagram_e(1, sofar, 0, lset);
 }
 
+/* given the string str, report the highest bag position needed to
+ * have those letters played.  IE: how close to end game is it?
+ * Q: do we coun't blanks? hmm... do it both ways.
+ */
+int
+baggit(letter_t *str, letter_t *bag, int useblanks)
+{
+	char *cp, *bp;
+	int i, j;
+	int ndx, low, bndx;
+	char *b = strdup(bag);
+
+	low = strlen(b);
+	for (i = strlen(str) -1; i >=0; i--) {
+		cp = strrchr(b, str[i]);
+		if (cp == NULL) {
+			ndx = -1;
+		} else {
+			ndx = (int) cp - (int)b;
+		}
+		if (useblanks) {
+			bp = strrchr(b, UBLANK);
+			if (bp != NULL) {
+				bndx = (int) bp - (int)b;
+			} else {
+				bndx = -1;
+			}
+			if (bndx > ndx) {
+				ndx = bndx;
+				cp = bp;
+			}
+		}
+		if (ndx < low) {
+			low = ndx;
+		}
+		if (cp != NULL) *cp = MARK;
+		if (low < 0) break;
+	}
+	return low;
+}
 
 /* lookup using bitset.  */
 int
@@ -4088,6 +4128,7 @@ parsedbg(char *arg)
 #define ACT_PLAYTHRU	0x010
 #define ACT_GEN		0x020
 #define ACT_STRAT	0x040
+#define	ACT_BAGGIT	0x080
 
 #define STRAT_GREEDY	1
 #define STRAT_GREED2	2
@@ -4100,7 +4141,7 @@ int
 main(int argc, char **argv)
 {
 	int i = 0, j = 0;
-	int rv;
+	int rv, rv2;
 	char *word = NULL;
 	int action = 0;
 	int c;		// option letter for getopt
@@ -4110,9 +4151,15 @@ main(int argc, char **argv)
 	int totalscore = 0;
 	hrtime_t start, end, totaltime;
 	uint64_t evals = 0;
-
-        while ((c = getopt(argc, argv, "LASMGPI:T:n:b:B:D:vqstd:o:R:")) != -1) {
+/* letters left for options
+ * . . C . E F . H . J K . . N O . Q . . . U V W X Y Z
+ * a . c . e f g h i j k l m . . p . r . . u . w x y z
+ */
+        while ((c = getopt(argc, argv, "LASMGPI:T:n:b:B:D:vqstd:o:R:z")) != -1) {
                 switch(c) {
+		case 'z':
+			action |= ACT_BAGGIT;
+			break;
 		case 'n':
 			level = atoi(optarg);
 			break;
@@ -4213,6 +4260,11 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 		if (rv != 0) {
 			vprintf(VNORM, "skipping non-parsable move %s\n", argstr);
 			continue;
+		}
+		if (action & ACT_BAGGIT) {
+			rv = baggit(argmove.tiles, globalbag, 0);
+			rv2 = baggit(argmove.tiles, globalbag, 1);
+			vprintf(VNORM, "%s needs tiles from position %d, or %d with blanks\n", argstr, rv, rv2);
 		}
 		if (action & ACT_LOOKUP) {
 			rv = bs_lookup(argmove.lcount, argmove.tiles, 1);
