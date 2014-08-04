@@ -1314,6 +1314,8 @@ updatemlsbs(board_t *b, int row, int col, int dir, letter_t l)
 	pl = b->spaces[aer][aec].b.f.letter;
 	ASSERT(pl != '\0');
 	ts = lval(pl);
+	curid = gotol(pl, curid);
+	curid = gc(gaddag[curid]);
 	cr = aer; cc = aec;
 	while ((pl = ndn(b, cr, cc, dir, -1)) > 0) {
 		ts += lval(pl);
