@@ -222,6 +222,33 @@ casec2lstr(char *cstr, char *lstr)
 	return inv;
 }
 
+inline void
+deblankstr(letter_t *lstr)
+{
+	int i = 0;
+	while (lstr[i] != '\0') {
+		lstr[i] = deblank(lstr[i]);
+		i++;
+	}
+}
+
+inline int
+casel2cstr(const char *lstr, char *cstr)
+{
+	int inv = 0;
+	int i = 0;
+
+	if (cstr == NULL) return -1;
+	if (lstr == NULL) return 0;
+	while (lstr[i] != '\0') {
+		cstr[i] = toupper(l2c(lstr[i]));
+		if (!is_bvalid(lstr[i])) inv++;
+		i++;
+	}
+	cstr[i] = '\0';
+	return inv;
+}
+
 inline int
 l2cstr(const char *lstr, char *cstr)
 {
@@ -1097,6 +1124,63 @@ DBG(DBG_LOOK, "i=%d, blank=%c nid=%d word=",i, l2c(BB|bl), nodeid) {
 				VERB(VNORM, " ") {
 					printlstr(word); printf("\n");
 				}
+				break;
+			}
+			nodeid = gc(gaddag[nodeid]);
+		} else {
+			break;
+		}
+	}
+DBG(DBG_LOOK, "i=%d found %d matches\n", i, matchcount);
+	return matchcount;
+}
+
+/* bitset and save lookup. keeps the list in mvs. */
+int
+bss_lookup(int i, letter_t *word, uint32_t nodeid, move_t *mvs, int *mvsndx)
+{
+	letter_t l;
+	bs_t b;
+	int matchcount = 0;
+
+	ASSERT(i > 0);
+
+	for (i-=1; i >= 0; i--) {
+		l = word[i];
+DBG(DBG_LOOK, "i=%d, word[i]=%c, nid=%d\n", i, l2c(l), nodeid);
+
+		b = l2b(l);
+		if (l == UBLANK) {
+			letter_t bl;
+			b = bitset[nodeid] & ALLPHABITS;
+			while (bl = nextl(&b, &nodeid)) {
+				/* recurse on blanks. */
+				word[i] = BB | bl;
+DBG(DBG_LOOK, "i=%d, blank=%c nid=%d word=",i, l2c(BB|bl), nodeid) {
+	printlstr(word); printf("\n");
+}
+				if ((i <= 0) && ( gf(gaddag[nodeid]))) {
+					matchcount++;
+//					VERB(VNORM, " ") {
+//						printlstr(word); printf("\n");
+//					}
+					strcpy(mvs[*mvsndx].tiles, word);
+					*mvsndx += 1;
+				}
+				if (i>0)
+					matchcount += bss_lookup(i, word, gc(gaddag[nodeid]), mvs, mvsndx);
+			}
+			word[i] = UBLANK;
+			break;
+		} else if (b & bitset[nodeid]) {
+			nodeid = gotol(l, nodeid);
+			if ((i == 0) && ( gf(gaddag[nodeid]))) {
+				matchcount++;
+//				VERB(VNORM, " ") {
+//					printlstr(word); printf("\n");
+//				}
+				strcpy(mvs[*mvsndx].tiles, word);
+				*mvsndx += 1;
 				break;
 			}
 			nodeid = gc(gaddag[nodeid]);
@@ -3357,6 +3441,192 @@ DBG(DBG_LAH, "[%d]returning for score %d/%d/%d with move=", depth, maxsc, maxP.s
 	return 2;
 }
 
+
+int
+subscore(move_t m, move_t subm)
+{
+	int i, j;
+	int sc;
+	board_t b = emptyboard;
+
+	/* first, stick down the sub moves */
+	for (i = 0; i < strlen(subm.tiles); i++) {
+		if (subm.tiles[i] != MARK) {
+			b.spaces[i][0].b.f.letter = subm.tiles[i];
+		}
+	}
+	m.dir = M_VERT;
+	m.row = 0; m.col = 0;
+	sc = score2(&m, &b, 1);
+// printmove(&m, -1);
+// showboard(b, 1);
+	return sc;
+}
+
+void
+do_15(move_t argmove)
+{
+	static move_t *mvs = NULL;
+	static move_t *subs = NULL;
+	int mvsndx = 0;
+	int subndx = 0;
+	int i, j, k;
+	int rv, rv2;
+	move_t m;
+	move_t subm;
+	rack_t r;
+	int rcnt = 0;
+	int bagsc;
+	int mvsc;
+
+	if (mvs == NULL) {
+		mvs = (move_t *)malloc(sizeof(move_t)*4096);
+	}
+	if (subs == NULL) {
+		subs = (move_t *)malloc(sizeof(move_t)*1024);
+	}
+	rv = bss_lookup(argmove.lcount, argmove.tiles, 1, mvs, &mvsndx);
+// printf("got %d lookups (%d)\n", mvsndx, rv);
+	for (i = 0; i < mvsndx; i++) {
+		deblankstr(mvs[i].tiles);
+		m = mvs[i];
+		m.tiles[0] = MARK;
+		m.tiles[7] = MARK;
+		m.tiles[14] = MARK;
+		m.lcount = strlen(m.tiles);
+		subndx = 0;
+		rv = subwords(m.tiles, 0, m.lcount - 1, 4, subs, &subndx);
+// printf(" got %d subwords (%d)\n", subndx, rv);
+
+		for (j = 0; j < subndx; j++) {
+			subm = subs[j];
+			rcnt = 0;
+			for (k = 0; k < strlen(subm.tiles); k ++ ) {
+				if (subm.tiles[k] == MARK) {
+					r.tiles[rcnt] = mvs[i].tiles[k];
+					rcnt++;
+				}
+			}
+			r.tiles[rcnt] = '\0';
+			bagsc = baggit(r.tiles, globalbag, 0);
+			rv2 = baggit(r.tiles, globalbag, 1);
+			mvsc = subscore(mvs[i], subm);
+			VERB(VNORM, "%d/%d/%d sub=", mvsc, bagsc, rv2) {
+				printlstr(subm.tiles);
+				printf(" rack=");
+				printlstr(r.tiles);
+				printf(" word=");
+				printlstr(mvs[i].tiles);
+				printf("\n");
+			}
+		}
+	}
+}
+
+/* given a word, print all the sub-words found within it. Also tell
+ * how many letters are left out to make them.
+ * this doesn't quite match either lookup or anagram.
+ */
+
+/*special lookup with spaces. doesn't do blanks.  */ 
+int
+sp_lookup(letter_t *word)
+{
+	letter_t l;
+	int subl;
+	bs_t b;
+	int nodeid = 1;
+	int lid;
+	int i = strlen(word);
+
+	ASSERT(i > 0);
+
+	subl = 0;
+	for (i-=1; i >= 0; i--) {
+		l = word[i];
+		b = l2b(l);
+		if (l == MARK) {
+			if (subl == 0) {
+				ASSERT(nodeid == 1);
+				continue;
+			}
+			if (subl == 1) {
+				/* singletons are OK */
+				subl = 0;
+				nodeid = 1;
+				continue;
+			}
+			if (gf(gaddag[lid])) {
+				/* it's a word. great. */
+				ASSERT(subl > 1);
+				subl = 0;
+				nodeid = 1;
+				continue;
+			} else {
+				/* not a match */
+				return 0;
+			}
+		} else if (b & bitset[nodeid]) {
+			subl++;
+			lid = gotol(l, nodeid);
+			nodeid = gc(gaddag[lid]);
+		} else {
+			return 0;
+		}
+	}
+	if ((subl > 1) && ! gf(gaddag[lid])) {
+		return 0;
+	} 
+	return 1;
+}
+
+/* use recursion, I think. */
+int
+subwords(letter_t *word, int spcs, int ndx, int limit, move_t *subs, int *subndx)
+{
+	int i, j;
+	letter_t savel;
+	int rv;
+	int wcnt = 0;
+
+// printf("in subwords spcs=%d ndx=%d, word=",spcs, ndx);
+// printlstr(word);
+// printf("\n");
+
+	if (spcs > limit) return 0;
+	i = strlen(word);
+	/* first check the word itself */
+	rv = sp_lookup(word);
+	if (rv > 0) {
+		wcnt++;
+		if (subs != NULL) {
+			strcpy(subs[*subndx].tiles, word);
+			*subndx += 1;
+		} else {
+			printf("  ");
+			printlstr(word);
+			printf(" (%d)\n", spcs);
+		}
+	}
+
+	/* now add a space */
+	if (spcs >= i - 1) {
+		/* don't bother */
+		return wcnt;
+	}
+
+	for (i = ndx; i >= 0; i -= 1) {
+// printf("sw[%d]: i=%d\n", spcs, i);
+		if (word[i] == MARK) continue;
+		savel = word[i];
+		word[i] = MARK;
+		wcnt += subwords(word, spcs+1, i, limit, subs, subndx);
+		word[i] = savel;
+	}
+	return wcnt;
+}
+
+
 /* do this later... */
 #ifdef DEBUG
 /* here we indulge in some paranoia. */
@@ -4129,6 +4399,8 @@ parsedbg(char *arg)
 #define ACT_GEN		0x020
 #define ACT_STRAT	0x040
 #define	ACT_BAGGIT	0x080
+#define ACT_SUBWORD	0x100
+#define ACT_15		0x200
 
 #define STRAT_GREEDY	1
 #define STRAT_GREED2	2
@@ -4155,8 +4427,14 @@ main(int argc, char **argv)
  * . . C . E F . H . J K . . N O . Q . . . U V W X Y Z
  * a . c . e f g h i j k l m . . p . r . . u . w x y z
  */
-        while ((c = getopt(argc, argv, "LASMGPI:T:n:b:B:D:vqstd:o:R:z")) != -1) {
+        while ((c = getopt(argc, argv, "LASMGPI:T:n:b:B:D:vqstd:o:R:xyz")) != -1) {
                 switch(c) {
+		case 'x':
+			action |= ACT_15;
+			break;
+		case 'y':
+			action |= ACT_SUBWORD;
+			break;
 		case 'z':
 			action |= ACT_BAGGIT;
 			break;
@@ -4260,6 +4538,13 @@ DBG(DBG_MAIN, "actions %d on arg %s\n", action, argstr);
 		if (rv != 0) {
 			vprintf(VNORM, "skipping non-parsable move %s\n", argstr);
 			continue;
+		}
+		if (action & ACT_15) {
+			do_15(argmove);
+		}
+		if (action & ACT_SUBWORD) {
+			rv = subwords(argmove.tiles, 0, argmove.lcount - 1, 15, NULL, NULL);
+			vprintf(VNORM, "%s had %d sub-words.\n", argstr, rv);
 		}
 		if (action & ACT_BAGGIT) {
 			rv = baggit(argmove.tiles, globalbag, 0);
